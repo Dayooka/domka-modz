@@ -2,7 +2,7 @@
 -- Domka modz - Loader
 -- ═══════════════════════════════════════════════════════════════
 
-local repoBase = "https://raw.githubusercontent.com/FELHASZNALONEV/PROJEKTNEV/main/"
+local repoBase = "https://raw.githubusercontent.com/Dayooka/domka-modz/refs/heads/main/"
 
 -- Globális konfigurációs tábla, hogy a GUI és a Combat is elérje ugyanazokat az értékeket
 getgenv().DomkaConfig = {
