@@ -1,5 +1,6 @@
--- ═══════════════════════════════════════════════════════════════
--- ═══════════════════════════════════════════════════════════════
+-- KillAuraController – CLEAN v4
+-- Upvalue réteg eltávolítva (executor nem támogatja)
+-- Minden más réteg megmarad és működik
 
 local Players           = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
@@ -20,8 +21,8 @@ local CFG = {
     RANGE             = 25,
     MAX_TARGETS       = 10,
     BURST_DELAY       = 0.004,
-    MULTIPLY          = 3,
-    MULT_DELAY        = 0.004,
+    MULTIPLY          = 2,
+    MULT_DELAY        = 0.006,
     EXEC_THRESHOLD    = 0.15,
     EXEC_HOLD         = 0.3,
     EXEC_CD           = 2.0,
@@ -30,186 +31,58 @@ local CFG = {
     BEHIND_OFFSET     = 2.5,
     BEHIND_RATE       = 0.08,
     UNDERGROUND_DEPTH = 12,
-    UV_RESET_RATE     = 0.05,
 }
 
--- ┌──────────────────────────────────────────────────────────────┐
--- │  RÉTEG 0 – MODULE POISONING                                  │
--- └──────────────────────────────────────────────────────────────┘
+-- ┌─────────────────────────────────────────────────────────────┐
+-- │  RÉTEG 0 – MODULE POISONING                                 │
+-- │  Shared table → CombatClient is látja a módosítást          │
+-- └─────────────────────────────────────────────────────────────┘
 local function poisonModules()
     if ActionConfig.LightAttack then ActionConfig.LightAttack.blockedBy = {} end
     if ActionConfig.HeavyAttack then ActionConfig.HeavyAttack.blockedBy = {} end
     if ActionConfig.Grab        then ActionConfig.Grab.blockedBy        = {} end
 
-    CombatPublic.MELEE_APPROACH_MAX  = 60
-
-    CombatPublic.meleeApproachStop = function() return 0.1 end
-    CombatPublic.meleeLungeTravel  = function(dist) return dist - 0.1 end
+    CombatPublic.MELEE_APPROACH_MAX = 60
+    CombatPublic.meleeApproachStop  = function() return 0.1 end
+    CombatPublic.meleeLungeTravel   = function(dist) return dist - 0.1 end
 
     print("[POISON] Modulok módosítva")
 end
-
 poisonModules()
 
--- ┌──────────────────────────────────────────────────────────────┐
--- │  RÉTEG 1 – UPVALUE MANIPULÁCIÓ (FIX: visited set + pcall)   │
--- │                                                              │
--- │  VOLT: rekurzív deepScan depth limit nélkül → stack overflow │
--- │  FIX:  visited{} table + max depth 2 + pcall minden hívásra  │
--- │        + csak u101.LightAttack closure-ját scanneljük,       │
--- │          nem az összes proto-t rekurzívan                    │
--- └──────────────────────────────────────────────────────────────┘
-local UV = { u78_func=nil, u78_idx=nil, u77_func=nil, u77_idx=nil }
-local lastUVReset = 0
-
-local function safeGetUpvalues(func)
-    if not getupvalues then return nil end
-    local ok, result = pcall(getupvalues, func)
-    return ok and result or nil
-end
-
-local function safeGetProtos(func)
-    if not getprotos then return {} end
-    local ok, result = pcall(getprotos, func)
-    return (ok and result) or {}
-end
-
-local function scanFunc(func, visited)
-    if visited[func] then return end
-    visited[func] = true
-
-    local ups = safeGetUpvalues(func)
-    if not ups then return end
-
-    for i, val in ups do
-        local name = ""
-        if getupvaluename then
-            local ok, n = pcall(getupvaluename, func, i)
-            if ok then name = n or "" end
-        end
-
-        -- u78: lastFireTime (szám, ~0 érték, "u78" nevű upvalue)
-        if name == "u78" and type(val) == "number" then
-            UV.u78_func = func
-            UV.u78_idx  = i
-            print("[UV] u78 megtalálva idx:", i, "érték:", val)
-        end
-
-        -- u77: comboIndex (szám, 1-10 között)
-        if name == "u77" and type(val) == "number" then
-            UV.u77_func = func
-            UV.u77_idx  = i
-            print("[UV] u77 megtalálva idx:", i, "érték:", val)
-        end
-    end
-end
-
-local function scanCombatClientUpvalues()
-    local scriptInst = LocalPlayer.PlayerScripts:FindFirstChild("CombatClient")
-    if not scriptInst then
-        warn("[UV] CombatClient nem található")
-        return
-    end
-
-    local getClosure = getscriptclosure or getscriptfunction
-    if not getClosure then
-        warn("[UV] Executor nem támogatja getscriptclosure-t")
-        return
-    end
-
-    local ok, closure = pcall(getClosure, scriptInst)
-    if not ok or not closure then
-        warn("[UV] Closure nem elérhető:", closure)
-        return
-    end
-
-    local visited = {}
-
-    -- FIX: csak 2 szint mélyen keresünk, visited set-tel
-    -- nem rekurzívan az összes proto-ban
-    scanFunc(closure, visited)
-
-    local protos = safeGetProtos(closure)
-    for _, proto in protos do
-        if not visited[proto] then
-            -- 1. szint: közvetlen inner functions
-            scanFunc(proto, visited)
-
-            -- 2. szint: ezek inner functions-jei
-            local subProtos = safeGetProtos(proto)
-            for _, sub in subProtos do
-                if not visited[sub] then
-                    scanFunc(sub, visited)
-                end
-            end
-            -- STOP: nem megyünk mélyebbre → nincs stack overflow
-        end
-    end
-
-    print("[UV] Scan befejezve | u78:", UV.u78_idx ~= nil, "| u77:", UV.u77_idx ~= nil)
-end
-
-local function setUV(func, idx, val)
-    if not func or not idx then return end
-    if setupvalue then
-        pcall(setupvalue, func, idx, val)
-    elseif debug and debug.setupvalue then
-        pcall(debug.setupvalue, func, idx, val)
-    end
-end
-
-local function resetFireTime()
-    local now = os.clock()
-    if now - lastUVReset < CFG.UV_RESET_RATE then return end
-    lastUVReset = now
-    setUV(UV.u78_func, UV.u78_idx, 0)
-end
-
-task.delay(2, scanCombatClientUpvalues)
-
--- ┌──────────────────────────────────────────────────────────────┐
--- │  RÉTEG 2 – __namecall HOOK (FIX: __index hook eltávolítva)  │
--- │                                                              │
--- │  VOLT: __index hook oldIndex(self,key) → végtelen rekurzió  │
--- │  FIX:  __index hook teljesen eltávolítva,                    │
--- │        __namecall marad (ez NEM rekurzív, biztonságos)       │
--- └──────────────────────────────────────────────────────────────┘
-local GET_SPOOF = {
-    AttackCooldown = true,
-    Swinging       = true,
-    HeavyCooldown  = true,
-}
-
+-- ┌─────────────────────────────────────────────────────────────┐
+-- │  RÉTEG 1 – __namecall HOOK                                  │
+-- │  A) GetAttribute spoof                                      │
+-- │  B) SetAttribute blokkolás                                  │
+-- │  C) FireServer szorzás (hookBypass guard-dal)               │
+-- └─────────────────────────────────────────────────────────────┘
+local GET_SPOOF    = { AttackCooldown=true, Swinging=true, HeavyCooldown=true }
 local hookedRemote = Remotes.PerformAction
+local hookBypass   = false
 local oldNamecall
 
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local method = getnamecallmethod()
     local char   = LocalPlayer.Character
 
-    -- GetAttribute spoof
     if method == "GetAttribute" and char and self == char then
-        if GET_SPOOF[select(1, ...)] then
-            return nil
-        end
+        if GET_SPOOF[select(1,...)] then return nil end
     end
 
-    -- SetAttribute blokkolás kliens oldalon
     if method == "SetAttribute" and char and self == char then
-        local attr = select(1, ...)
-        if GET_SPOOF[attr] then
-            return
-        end
+        if GET_SPOOF[select(1,...)] then return end
     end
 
-    -- FireServer szorzás
-    if method == "FireServer" and self == hookedRemote then
-        local action = select(1, ...)
-        local params = select(2, ...)
+    if method == "FireServer" and self == hookedRemote and not hookBypass then
+        local action = select(1,...)
+        local params = select(2,...)
         if action == "LightAttack" and type(params) == "table" then
+            local p = params
             for i = 1, CFG.MULTIPLY do
                 task.delay(i * CFG.MULT_DELAY, function()
-                    oldNamecall(self, action, params)
+                    hookBypass = true
+                    pcall(function() hookedRemote:FireServer(action, p) end)
+                    hookBypass = false
                 end)
             end
         end
@@ -218,11 +91,12 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     return oldNamecall(self, ...)
 end))
 
--- ┌──────────────────────────────────────────────────────────────┐
--- │  RÉTEG 3 – firesignal FLUSH                                  │
--- └──────────────────────────────────────────────────────────────┘
+-- ┌─────────────────────────────────────────────────────────────┐
+-- │  RÉTEG 2 – firesignal FLUSH                                 │
+-- │  AttributeChangedSignal("AttackCooldown") → CombatClient    │
+-- │  flushCombatIntent()-je lefut saját magától                 │
+-- └─────────────────────────────────────────────────────────────┘
 local lastSigFlush = 0
-
 local function forceFlush(char)
     if not firesignal then return end
     local now = os.clock()
@@ -233,9 +107,9 @@ local function forceFlush(char)
     end)
 end
 
--- ┌──────────────────────────────────────────────────────────────┐
--- │  POZÍCIÓ MANAGER                                             │
--- └──────────────────────────────────────────────────────────────┘
+-- ┌─────────────────────────────────────────────────────────────┐
+-- │  POZÍCIÓ MANAGER                                            │
+-- └─────────────────────────────────────────────────────────────┘
 local posState = { underground=false, surfaceY=nil, lastBehind=0 }
 
 local function maintainUnderground(hrp)
@@ -277,17 +151,17 @@ local function teleportBehind(hrp, npcRoot)
     hrp.CFrame = CFrame.lookAt(behind, npcRoot.Position)
 end
 
-local UGND_TRIGGERS = {"Grabbed","Stunned","Ragdolled","Imprisoned","Pinned","KnockedDown"}
+local UGND = {"Grabbed","Stunned","Ragdolled","Imprisoned","Pinned","KnockedDown"}
 local function shouldGoUnderground(char)
-    for _, a in UGND_TRIGGERS do
+    for _, a in UGND do
         if char:GetAttribute(a) then return true end
     end
     return false
 end
 
--- ┌──────────────────────────────────────────────────────────────┐
--- │  COMBAT                                                      │
--- └──────────────────────────────────────────────────────────────┘
+-- ┌─────────────────────────────────────────────────────────────┐
+-- │  COMBAT RENDSZER                                            │
+-- └─────────────────────────────────────────────────────────────┘
 local npcState   = {}
 local lastDirDmg = {}
 local attrConn   = nil
@@ -305,7 +179,8 @@ local function computeCFrame(char, hrp, npc, npcRoot)
     if dist <= stop or dist > maxD then
         local flat = Vector3.new(npcRoot.Position.X, hrp.Position.Y, npcRoot.Position.Z)
         return (flat - hrp.Position).Magnitude > 0.01
-            and CFrame.lookAt(hrp.Position, flat) or hrp.CFrame
+            and CFrame.lookAt(hrp.Position, flat)
+            or  hrp.CFrame
     end
 
     local rc = RaycastParams.new()
@@ -317,7 +192,7 @@ local function computeCFrame(char, hrp, npc, npcRoot)
     local hit    = workspace:Raycast(hrp.Position, unit * travel, rc)
     local actual = hit
                and math.max(0, (hit.Position - hrp.Position).Magnitude - 2)
-               or travel
+               or  travel
     if actual <= 0.1 then return hrp.CFrame end
     return CFrame.lookAt(hrp.Position + unit * actual, npcRoot.Position)
 end
@@ -327,7 +202,8 @@ local function getNPCsInRange(hrp)
     for _, npc in CollectionService:GetTagged(Entities.Tag.NPC) do
         if npc:IsA("Model") and npc:IsDescendantOf(workspace) then
             local hum  = npc:FindFirstChildOfClass("Humanoid")
-            local root = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("Torso")
+            local root = npc:FindFirstChild("HumanoidRootPart")
+                      or npc:FindFirstChild("Torso")
             if hum and hum.Health > 0 and root then
                 local d = (root.Position - hrp.Position).Magnitude
                 if d <= CFG.RANGE then
@@ -361,7 +237,8 @@ local function execGrab(char, hrp, npc, npcRoot, st)
     st.executing = true
     st.lastExec  = now
     Remotes.PerformAction:FireServer("Grab", {
-        phase="start", cframe=computeCFrame(char, hrp, npc, npcRoot)
+        phase  = "start",
+        cframe = computeCFrame(char, hrp, npc, npcRoot),
     })
     task.delay(CFG.EXEC_HOLD, function()
         if LocalPlayer.Character == char then
@@ -397,7 +274,10 @@ local function fireAll(char, hrp, targets, now)
         local st = npcState[e.npc]
         if not st or st.executing then continue end
         tryDirDmg(e.npc, e.hum, now)
-        local pkt = {phase="start", cframe=computeCFrame(char, hrp, e.npc, e.root)}
+        local pkt = {
+            phase  = "start",
+            cframe = computeCFrame(char, hrp, e.npc, e.root),
+        }
         if i == 1 then
             Remotes.PerformAction:FireServer("LightAttack", pkt)
         else
@@ -405,8 +285,8 @@ local function fireAll(char, hrp, targets, now)
             task.delay(d, function()
                 if n.Parent and LocalPlayer.Character == char then
                     Remotes.PerformAction:FireServer("LightAttack", {
-                        phase="start",
-                        cframe=computeCFrame(char, hrp, n, r),
+                        phase  = "start",
+                        cframe = computeCFrame(char, hrp, n, r),
                     })
                 end
             end)
@@ -442,11 +322,9 @@ local function setupChar(char)
             for _, st in npcState do st.executing = false end
         end
     end)
-    task.delay(1, scanCombatClientUpvalues)
 end
 
 local cleanTimer = 0
-
 RunService.Heartbeat:Connect(function(dt)
     local char = LocalPlayer.Character
     if not char then return end
@@ -455,7 +333,6 @@ RunService.Heartbeat:Connect(function(dt)
     local hum  = char:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then return end
 
-    resetFireTime()
     forceFlush(char)
 
     if shouldGoUnderground(char) then
@@ -467,7 +344,7 @@ RunService.Heartbeat:Connect(function(dt)
     end
 
     cleanTimer += dt
-    if cleanTimer >= 3 then cleanTimer = 0 cleanup() end
+    if cleanTimer >= 3 then cleanTimer = 0 ; cleanup() end
 
     if not canFire(char) then return end
 
@@ -476,13 +353,16 @@ RunService.Heartbeat:Connect(function(dt)
     if #targets == 0 then return end
 
     if #targets > CFG.MAX_TARGETS then
-        local t = {} for i=1,CFG.MAX_TARGETS do t[i]=targets[i] end targets=t
+        local t = {}
+        for i = 1, CFG.MAX_TARGETS do t[i] = targets[i] end
+        targets = t
     end
 
     for _, e in targets do
         local st = ensureState(e.npc)
         watchHP(char, hrp, e.npc, e.root)
-        if e.hum.Health/e.hum.MaxHealth <= CFG.EXEC_THRESHOLD and not st.executing then
+        if e.hum.Health/e.hum.MaxHealth <= CFG.EXEC_THRESHOLD
+        and not st.executing then
             execGrab(char, hrp, e.npc, e.root, st)
         end
     end
