@@ -1,28 +1,34 @@
 -- ═══════════════════════════════════════════════════════════════
--- Domka modz - Advanced GUI (Rayfield Integration)
+-- Domka modz - Advanced GUI (KillAura v7 Integration)
 -- ═══════════════════════════════════════════════════════════════
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local CFG = getgenv().DomkaConfig or {
-    RANGE             = 25,
-    MAX_TARGETS       = 10,
-    BURST_DELAY       = 0.004,
-    MULTIPLY          = 3,
-    MULT_DELAY        = 0.004,
-    EXEC_THRESHOLD    = 0.15,
-    EXEC_HOLD         = 0.3,
-    EXEC_CD           = 2.0,
-    DIRECT_DMG        = 20,
-    DIRECT_RATE       = 0.08,
-    BEHIND_OFFSET     = 2.5,
-    BEHIND_RATE       = 0.08,
+    RANGE = 24,
+    CHASE_RANGE = 50,
+    MAX_TARGETS = 10,
+    BURST_DELAY = 0.004,
+    MULTIPLY = 2,
+    MULT_DELAY = 0.006,
+    EXEC_THRESHOLD = 0.15,
+    EXEC_HOLD = 0.3,
+    EXEC_CD = 2.0,
+    DIRECT_DMG = 20,
+    DIRECT_RATE = 0.08,
+    BEHIND_OFFSET = 2.5,
+    BEHIND_RATE = 0.03,
     UNDERGROUND_DEPTH = 12,
-    UV_RESET_RATE     = 0.05,
+    ATTACK_PLAYERS = false,
+    ATTACK_PLAYERS_THRESHOLD = 0.3,
+    FREEZE_ENABLED = true,
+    FREEZE_RATE = 0,
+    BEHIND_ON_ATTACK = true,
+    UNDERGROUND_AFTER_BURST = false,
 }
 
 local Window = Rayfield:CreateWindow({
-   Name = "Domka modz | Advanced Combat",
+   Name = "Domka modz | KillAura v7",
    LoadingTitle = "Domka modz Framework",
    LoadingSubtitle = "by Domka",
    ConfigurationSaving = {
@@ -39,14 +45,14 @@ local Window = Rayfield:CreateWindow({
 })
 
 -- ┌──────────────────────────────────────────────────────────────┐
--- │  TAB: COMBAT & TARGETING                                     │
+-- │  TAB: COMBAT & RANGE                                         │
 -- └──────────────────────────────────────────────────────────────┘
 local CombatTab = Window:CreateTab("Combat", 4483362458)
 
-CombatTab:CreateSection("Targeting & Range")
+CombatTab:CreateSection("Range & Targeting")
 
 CombatTab:CreateSlider({
-   Name = "Targeting Range",
+   Name = "Aura Range",
    Range = {5, 100},
    Increment = 1,
    Suffix = "studs",
@@ -55,6 +61,19 @@ CombatTab:CreateSlider({
    Callback = function(Value)
       CFG.RANGE = Value
       getgenv().DomkaConfig.RANGE = Value
+   end,
+})
+
+CombatTab:CreateSlider({
+   Name = "Chase Range (Knockback)",
+   Range = {10, 150},
+   Increment = 1,
+   Suffix = "studs",
+   CurrentValue = CFG.CHASE_RANGE,
+   Flag = "ChaseRangeSlider",
+   Callback = function(Value)
+      CFG.CHASE_RANGE = Value
+      getgenv().DomkaConfig.CHASE_RANGE = Value
    end,
 })
 
@@ -71,16 +90,13 @@ CombatTab:CreateSlider({
    end,
 })
 
-CombatTab:CreateSlider({
-   Name = "Teleport Behind Offset",
-   Range = {1, 10},
-   Increment = 0.5,
-   Suffix = "studs",
-   CurrentValue = CFG.BEHIND_OFFSET,
-   Flag = "BehindOffsetSlider",
+CombatTab:CreateToggle({
+   Name = "Attack Players",
+   CurrentValue = CFG.ATTACK_PLAYERS,
+   Flag = "AttackPlayersToggle",
    Callback = function(Value)
-      CFG.BEHIND_OFFSET = Value
-      getgenv().DomkaConfig.BEHIND_OFFSET = Value
+      CFG.ATTACK_PLAYERS = Value
+      getgenv().DomkaConfig.ATTACK_PLAYERS = Value
    end,
 })
 
@@ -126,11 +142,11 @@ CombatTab:CreateSlider({
 })
 
 -- ┌──────────────────────────────────────────────────────────────┐
--- │  TAB: EXECUTION & MOVEMENT                                   │
+-- │  TAB: EXECUTION & FREEZE                                     │
 -- └──────────────────────────────────────────────────────────────┘
 local ExecTab = Window:CreateTab("Execution", 4483362458)
 
-ExecTab:CreateSection("Grab & Auto Execution")
+ExecTab:CreateSection("Execution Settings")
 
 ExecTab:CreateSlider({
    Name = "Execution HP Threshold",
@@ -171,9 +187,39 @@ ExecTab:CreateSlider({
    end,
 })
 
-ExecTab:CreateSection("Underground Protection")
+ExecTab:CreateSection("Target Freeze & Control")
 
-ExecTab:CreateSlider({
+ExecTab:CreateToggle({
+   Name = "Enable Target Freeze",
+   CurrentValue = CFG.FREEZE_ENABLED,
+   Flag = "FreezeToggle",
+   Callback = function(Value)
+      CFG.FREEZE_ENABLED = Value
+      getgenv().DomkaConfig.FREEZE_ENABLED = Value
+   end,
+})
+
+-- ┌──────────────────────────────────────────────────────────────┐
+-- │  TAB: MOVEMENT & POSITION                                    │
+-- └──────────────────────────────────────────────────────────────┘
+local MoveTab = Window:CreateTab("Movement", 4483362458)
+
+MoveTab:CreateSection("Position & Teleport")
+
+CombatTab:CreateSlider({ -- vagy MoveTab
+   Name = "Behind Offset",
+   Range = {1, 10},
+   Increment = 0.5,
+   Suffix = "studs",
+   CurrentValue = CFG.BEHIND_OFFSET,
+   Flag = "BehindOffsetSlider",
+   Callback = function(Value)
+      CFG.BEHIND_OFFSET = Value
+      getgenv().DomkaConfig.BEHIND_OFFSET = Value
+   end,
+})
+
+MoveTab:CreateSlider({
    Name = "Underground Depth",
    Range = {5, 30},
    Increment = 1,
@@ -186,28 +232,29 @@ ExecTab:CreateSlider({
    end,
 })
 
--- ┌──────────────────────────────────────────────────────────────┐
--- │  TAB: SETTINGS                                               │
--- └──────────────────────────────────────────────────────────────┘
-local SettingsTab = Window:CreateTab("Settings", 4483362458)
+MoveTab:CreateToggle({
+   Name = "Behind On Attack",
+   CurrentValue = CFG.BEHIND_ON_ATTACK,
+   Flag = "BehindOnAttackToggle",
+   Callback = function(Value)
+      CFG.BEHIND_ON_ATTACK = Value
+      getgenv().DomkaConfig.BEHIND_ON_ATTACK = Value
+   end,
+})
 
-SettingsTab:CreateSection("System Controls")
-
-SettingsTab:CreateButton({
-   Name = "Force Upvalue Scan",
-   Callback = function()
-      Rayfield:Notify({
-         Title = "Domka modz",
-         Content = "Upvalue rescan elindítva...",
-         Duration = 3,
-         Image = 4483362458,
-      })
+MoveTab:CreateToggle({
+   Name = "Underground After Burst",
+   CurrentValue = CFG.UNDERGROUND_AFTER_BURST,
+   Flag = "UGAfterBurstToggle",
+   Callback = function(Value)
+      CFG.UNDERGROUND_AFTER_BURST = Value
+      getgenv().DomkaConfig.UNDERGROUND_AFTER_BURST = Value
    end,
 })
 
 Rayfield:Notify({
    Title = "Domka modz",
-   Content = "GUI sikeresen betöltve!",
+   Content = "KillAura v7 GUI sikeresen betöltve!",
    Duration = 5,
    Image = 4483362458,
 })
