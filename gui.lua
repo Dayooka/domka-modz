@@ -1,34 +1,32 @@
 -- ═══════════════════════════════════════════════════════════════
--- Domka modz - Advanced GUI (KillAura v7 Integration)
--- ═══════════════════════════════════════════════════════════════
-
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
-local CFG = getgenv().DomkaConfig or {
+-- Biztonsági fallback, ha közvetlenül futna
+local CFG = _G.KillAuraCFG or {
+    ENABLED = true,
     RANGE = 24,
     CHASE_RANGE = 50,
     MAX_TARGETS = 10,
     BURST_DELAY = 0.004,
     MULTIPLY = 2,
     MULT_DELAY = 0.006,
+    TARGET_PRIORITY = "nearest",
+    ATTACK_PLAYERS = false,
     EXEC_THRESHOLD = 0.15,
     EXEC_HOLD = 0.3,
     EXEC_CD = 2.0,
-    DIRECT_DMG = 20,
-    DIRECT_RATE = 0.08,
     BEHIND_OFFSET = 2.5,
     BEHIND_RATE = 0.03,
-    UNDERGROUND_DEPTH = 12,
-    ATTACK_PLAYERS = false,
-    ATTACK_PLAYERS_THRESHOLD = 0.3,
-    FREEZE_ENABLED = true,
-    FREEZE_RATE = 0,
     BEHIND_ON_ATTACK = true,
-    UNDERGROUND_AFTER_BURST = false,
+    UNDERGROUND_DEPTH = 10,
+    UNDERGROUND_ENABLED = true,
+    FREEZE_ENABLED = true,
 }
 
+_G.KillAuraCFG = CFG
+
 local Window = Rayfield:CreateWindow({
-   Name = "Domka modz | KillAura v7",
+   Name = "Domka modz | KillAura v8",
    LoadingTitle = "Domka modz Framework",
    LoadingSubtitle = "by Domka",
    ConfigurationSaving = {
@@ -45,9 +43,39 @@ local Window = Rayfield:CreateWindow({
 })
 
 -- ┌──────────────────────────────────────────────────────────────┐
--- │  TAB: COMBAT & RANGE                                         │
+-- │  TAB: MAIN & COMBAT                                          │
 -- └──────────────────────────────────────────────────────────────┘
 local CombatTab = Window:CreateTab("Combat", 4483362458)
+
+CombatTab:CreateSection("General Controls")
+
+CombatTab:CreateToggle({
+   Name = "KillAura Enabled",
+   CurrentValue = CFG.ENABLED,
+   Flag = "EnabledToggle",
+   Callback = function(Value)
+      CFG.ENABLED = Value
+   end,
+})
+
+CombatTab:CreateToggle({
+   Name = "Attack Players",
+   CurrentValue = CFG.ATTACK_PLAYERS,
+   Flag = "AttackPlayersToggle",
+   Callback = function(Value)
+      CFG.ATTACK_PLAYERS = Value
+   end,
+})
+
+CombatTab:CreateDropdown({
+   Name = "Target Priority",
+   Options = {"nearest", "lowest_hp", "mixed"},
+   CurrentOption = CFG.TARGET_PRIORITY,
+   Flag = "TargetPriorityDropdown",
+   Callback = function(Option)
+      CFG.TARGET_PRIORITY = Option
+   end,
+})
 
 CombatTab:CreateSection("Range & Targeting")
 
@@ -60,7 +88,6 @@ CombatTab:CreateSlider({
    Flag = "RangeSlider",
    Callback = function(Value)
       CFG.RANGE = Value
-      getgenv().DomkaConfig.RANGE = Value
    end,
 })
 
@@ -73,7 +100,6 @@ CombatTab:CreateSlider({
    Flag = "ChaseRangeSlider",
    Callback = function(Value)
       CFG.CHASE_RANGE = Value
-      getgenv().DomkaConfig.CHASE_RANGE = Value
    end,
 })
 
@@ -86,17 +112,6 @@ CombatTab:CreateSlider({
    Flag = "MaxTargetsSlider",
    Callback = function(Value)
       CFG.MAX_TARGETS = Value
-      getgenv().DomkaConfig.MAX_TARGETS = Value
-   end,
-})
-
-CombatTab:CreateToggle({
-   Name = "Attack Players",
-   CurrentValue = CFG.ATTACK_PLAYERS,
-   Flag = "AttackPlayersToggle",
-   Callback = function(Value)
-      CFG.ATTACK_PLAYERS = Value
-      getgenv().DomkaConfig.ATTACK_PLAYERS = Value
    end,
 })
 
@@ -111,7 +126,6 @@ CombatTab:CreateSlider({
    Flag = "MultiplierSlider",
    Callback = function(Value)
       CFG.MULTIPLY = Value
-      getgenv().DomkaConfig.MULTIPLY = Value
    end,
 })
 
@@ -124,20 +138,6 @@ CombatTab:CreateSlider({
    Flag = "BurstDelaySlider",
    Callback = function(Value)
       CFG.BURST_DELAY = Value
-      getgenv().DomkaConfig.BURST_DELAY = Value
-   end,
-})
-
-CombatTab:CreateSlider({
-   Name = "Direct Damage",
-   Range = {0, 100},
-   Increment = 5,
-   Suffix = "HP",
-   CurrentValue = CFG.DIRECT_DMG,
-   Flag = "DirectDmgSlider",
-   Callback = function(Value)
-      CFG.DIRECT_DMG = Value
-      getgenv().DomkaConfig.DIRECT_DMG = Value
    end,
 })
 
@@ -157,7 +157,6 @@ ExecTab:CreateSlider({
    Flag = "ExecThreshSlider",
    Callback = function(Value)
       CFG.EXEC_THRESHOLD = Value
-      getgenv().DomkaConfig.EXEC_THRESHOLD = Value
    end,
 })
 
@@ -170,7 +169,6 @@ ExecTab:CreateSlider({
    Flag = "ExecHoldSlider",
    Callback = function(Value)
       CFG.EXEC_HOLD = Value
-      getgenv().DomkaConfig.EXEC_HOLD = Value
    end,
 })
 
@@ -183,11 +181,10 @@ ExecTab:CreateSlider({
    Flag = "ExecCDSlider",
    Callback = function(Value)
       CFG.EXEC_CD = Value
-      getgenv().DomkaConfig.EXEC_CD = Value
    end,
 })
 
-ExecTab:CreateSection("Target Freeze & Control")
+ExecTab:CreateSection("Target Control & Freeze")
 
 ExecTab:CreateToggle({
    Name = "Enable Target Freeze",
@@ -195,7 +192,6 @@ ExecTab:CreateToggle({
    Flag = "FreezeToggle",
    Callback = function(Value)
       CFG.FREEZE_ENABLED = Value
-      getgenv().DomkaConfig.FREEZE_ENABLED = Value
    end,
 })
 
@@ -206,7 +202,7 @@ local MoveTab = Window:CreateTab("Movement", 4483362458)
 
 MoveTab:CreateSection("Position & Teleport")
 
-CombatTab:CreateSlider({ -- vagy MoveTab
+MoveTab:CreateSlider({
    Name = "Behind Offset",
    Range = {1, 10},
    Increment = 0.5,
@@ -215,7 +211,6 @@ CombatTab:CreateSlider({ -- vagy MoveTab
    Flag = "BehindOffsetSlider",
    Callback = function(Value)
       CFG.BEHIND_OFFSET = Value
-      getgenv().DomkaConfig.BEHIND_OFFSET = Value
    end,
 })
 
@@ -228,7 +223,15 @@ MoveTab:CreateSlider({
    Flag = "UGDepthSlider",
    Callback = function(Value)
       CFG.UNDERGROUND_DEPTH = Value
-      getgenv().DomkaConfig.UNDERGROUND_DEPTH = Value
+   end,
+})
+
+MoveTab:CreateToggle({
+   Name = "Underground Enabled",
+   CurrentValue = CFG.UNDERGROUND_ENABLED,
+   Flag = "UGEnabledToggle",
+   Callback = function(Value)
+      CFG.UNDERGROUND_ENABLED = Value
    end,
 })
 
@@ -238,23 +241,12 @@ MoveTab:CreateToggle({
    Flag = "BehindOnAttackToggle",
    Callback = function(Value)
       CFG.BEHIND_ON_ATTACK = Value
-      getgenv().DomkaConfig.BEHIND_ON_ATTACK = Value
-   end,
-})
-
-MoveTab:CreateToggle({
-   Name = "Underground After Burst",
-   CurrentValue = CFG.UNDERGROUND_AFTER_BURST,
-   Flag = "UGAfterBurstToggle",
-   Callback = function(Value)
-      CFG.UNDERGROUND_AFTER_BURST = Value
-      getgenv().DomkaConfig.UNDERGROUND_AFTER_BURST = Value
    end,
 })
 
 Rayfield:Notify({
    Title = "Domka modz",
-   Content = "KillAura v7 GUI sikeresen betöltve!",
+   Content = "KillAura v8 GUI sikeresen betöltve!",
    Duration = 5,
    Image = 4483362458,
 })
