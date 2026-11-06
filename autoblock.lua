@@ -1,175 +1,119 @@
---[[
 local Cfg    = require(script.Parent._Config)
 local Shared = require(script.Parent._Shared)
-local RS     = game:GetService("ReplicatedStorage")
-local Players= game:GetService("Players")
-local CS     = game:GetService("CollectionService")
 
-local S = {
-    blocking     = false,
-    lastBlockAt  = 0,
-    lastHitAt    = 0,
-    lastHP       = math.huge,
-    lastStepAt   = 0,
-    preemptLock  = false,
-    totalParry   = 0,
-    totalBlock   = 0,
-}
-local lastTrig = 0
+local gatherMote = Shared.getRemoteByName("GatherMote")
+local S = { ec = 0, nc = 0, status = "Idle" }
 
--- ── Feltételek ─────────────────────────────────────────────────────
-local function canBlock() return Shared.canBlock() end
-local function canStep()
-    return Shared.canStep(S.lastStepAt, Cfg.get("BlockParry","STEP_COOLDOWN"))
+local EARTH, NAMEK = {}, {}
+local function rebuildSets()
+    EARTH = {}; NAMEK = {}
+    for _, n in ipairs(Cfg.get("DragonBall","EARTH") or {}) do EARTH[n] = true end
+    for _, n in ipairs(Cfg.get("DragonBall","NAMEK") or {}) do NAMEK[n] = true end
 end
+rebuildSets()
+Cfg.onChange(function(mod, key)
+    if mod == "DragonBall" and (key == "EARTH" or key == "NAMEK") then rebuildSets() end
+end)
 
-local function enemyNear()
-    local range = Cfg.get("BlockParry","PREEMPTIVE_RANGE") or 20
-    local hrp   = Shared.getHRP()
-    if not hrp then return false end
-    local Ent   = Shared.getEntities()
-    if Ent then
-        for _, npc in ipairs(CS:GetTagged(Ent.Tag.NPC)) do
-            if npc:IsA("Model") and npc:IsDescendantOf(workspace) then
-                local h = npc:FindFirstChildOfClass("Humanoid")
-                local r = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("Torso")
-                if h and h.Health > 0 and r then
-                    if (r.Position - hrp.Position).Magnitude <= range then return true end
-                end
-            end
+local function isDB(i)    return EARTH[i.Name] or NAMEK[i.Name] end
+local function exists(b)  return b.part and b.part.Parent and b.inst and b.inst.Parent end
+
+local function findAll()
+    local res = {}; local seen = {}
+    local function chk(i)
+        if seen[i] or not i.Parent then return end
+        seen[i] = true
+        if isDB(i) then
+            local p = Shared.getPart(i)
+            if p then table.insert(res, { inst=i, part=p, namek=NAMEK[i.Name]~=nil }) end
         end
     end
-    for _, pl in ipairs(Players:GetPlayers()) do
-        if pl ~= Shared.getLP() and pl.Character then
-            local r = pl.Character:FindFirstChild("HumanoidRootPart")
-            if r and (r.Position - hrp.Position).Magnitude <= range then return true end
+    for _, a in ipairs(workspace:GetChildren()) do
+        chk(a)
+        for _, b in ipairs(a:GetChildren()) do
+            chk(b)
+            for _, c in ipairs(b:GetChildren()) do chk(c) end
         end
     end
-    return false
+    return res
 end
 
--- ── Végrehajtás ────────────────────────────────────────────────────
-local function fireBlock()
-    local now  = tick()
-    local cd   = Cfg.get("BlockParry","BLOCK_COOLDOWN") or 0.22
-    local hold = Cfg.get("BlockParry","BLOCK_HOLD")     or 0.55
-    if now - S.lastBlockAt < cd then return end
-    if not canBlock() then return end
-    S.blocking    = true
-    S.lastBlockAt = now
-    S.totalBlock  = S.totalBlock + 1
-    Shared.perform("Block", { phase = "start" })
-    task.delay(hold, function()
-        if S.blocking and not S.preemptLock then
-            Shared.perform("Block", { phase = "stop" })
-            S.blocking = false
-        end
-    end)
+local function tryPickup(ball)
+    if gatherMote then
+        pcall(function() gatherMote:FireServer(ball.inst) end)
+        pcall(function() gatherMote:FireServer(ball.part) end)
+    end
+    for _, pp in ipairs(ball.inst:GetDescendants()) do
+        if pp:IsA("ProximityPrompt") then pcall(fireproximityprompt, pp) end
+    end
+    local hrp = Shared.getHRP()
+    if hrp and ball.part and ball.part.Parent then
+        local oy = Cfg.get("DragonBall","TP_OFFSET_Y") or 3
+        hrp.CFrame = ball.part.CFrame
+        task.wait(0.04)
+        hrp.CFrame = ball.part.CFrame + Vector3.new(0, oy, 0)
+    end
 end
 
-local function fireStep()
-    if not canStep() then fireBlock(); return end
-    local dirs = Cfg.get("BlockParry","STEP_DIRS") or { "back","left","right" }
-    S.lastStepAt = tick()
-    S.totalParry = S.totalParry + 1
-    Shared.perform("SideStep", {
-        kind = dirs[math.random(1, #dirs)],
-        air  = Shared.isAirborne(),
-    })
-end
-
-local function onHit()
-    if not Cfg.get("BlockParry","enabled") then return end
-    local now  = tick()
-    local dedup = Cfg.get("BlockParry","DEDUP_WIN") or 0.07
-    if now - lastTrig < dedup then return end
-    lastTrig = now
-    fireBlock()
-    task.delay(Cfg.get("BlockParry","PARRY_DELAY") or 0.06, fireStep)
-end
-
--- ── 4 rétegű detektálás ────────────────────────────────────────────
-local function attachLastHit(c)
-    local v = c:GetAttribute("LastHitAt")
-    if v then S.lastHitAt = v end
-    c:GetAttributeChangedSignal("LastHitAt"):Connect(function()
-        local nv = c:GetAttribute("LastHitAt")
-        if nv and nv ~= S.lastHitAt then S.lastHitAt = nv; onHit() end
-    end)
-end
-
-local function attachHP(h)
-    S.lastHP = h.Health
-    h.HealthChanged:Connect(function(hp)
-        local d = S.lastHP - hp; S.lastHP = hp
-        if d >= (Cfg.get("BlockParry","HP_DROP_MIN") or 0.5) then onHit() end
-    end)
-end
-
-local RemF = RS:WaitForChild("Remotes", 10)
-if RemF then
-    local hs = RemF:FindFirstChild("HitStop")
-    if hs then hs.OnClientEvent:Connect(function(v)
-        if v == nil or v == Shared.getChar() then onHit() end
-    end) end
-    local cf = RemF:FindFirstChild("CombatFeedback")
-    if cf then cf.OnClientEvent:Connect(function(d)
-        if type(d) == "table" then
-            local t = d.type or d.feedbackType or d[1]
-            if t == "Hit" or t == "hit" then onHit() end
-        end
-    end) end
-end
-
--- ── Preemptív mód ──────────────────────────────────────────────────
 task.spawn(function()
+    task.wait(1.5)
     while true do
-        local rehold = Cfg.get("BlockParry","PREEMPTIVE_REHOLD") or 0.48
-        task.wait(rehold)
-        if Cfg.get("BlockParry","enabled") and Cfg.get("BlockParry","PREEMPTIVE") then
-            if enemyNear() and canBlock() then
-                S.preemptLock = true
-                Shared.perform("Block", { phase = "start" })
-                S.blocking = true; S.lastBlockAt = tick()
-            else
-                if S.preemptLock then
-                    S.preemptLock = false
-                    Shared.perform("Block", { phase = "stop" })
-                    S.blocking = false
-                end
-            end
+        if not Cfg.get("DragonBall","enabled") then
+            S.status = "Kikapcsolva"
+            task.wait(1)
         else
-            if S.preemptLock then
-                S.preemptLock = false
-                Shared.perform("Block", { phase = "stop" })
-                S.blocking = false
+            local hrp = Shared.getHRP()
+            if not hrp then
+                task.wait(0.5)
+            else
+                local balls = findAll()
+                S.ec = 0; S.nc = 0
+                for _, b in ipairs(balls) do
+                    if b.namek then
+                        S.nc = S.nc + 1
+                    else
+                        S.ec = S.ec + 1
+                    end
+                end
+
+                if #balls == 0 then
+                    S.status = "Mind megvan!"
+                    if Cfg.get("DragonBall","AUTO_SUMMON") then
+                        Shared.invoke("RequestSummon")
+                    end
+                    if Cfg.get("DragonBall","LOOP") then
+                        task.wait(5)
+                    else
+                        break
+                    end
+                else
+                    for _, ball in ipairs(balls) do
+                        if not Cfg.get("DragonBall","enabled") then break end
+                        if exists(ball) then
+                            local oy = Cfg.get("DragonBall","TP_OFFSET_Y") or 3
+                            S.status = (ball.namek and "Namek: " or "Earth: ") .. ball.inst.Name
+                            hrp.CFrame = ball.part.CFrame + Vector3.new(0, oy, 0)
+                            task.wait(0.06)
+                            local retries = Cfg.get("DragonBall","MAX_RETRIES") or 4
+                            local retDel  = Cfg.get("DragonBall","RETRY_DELAY") or 0.18
+                            for _ = 1, retries do
+                                tryPickup(ball)
+                                task.wait(retDel)
+                                if not exists(ball) then break end
+                            end
+                            task.wait(Cfg.get("DragonBall","TP_DELAY") or 0.30)
+                        end
+                    end
+                    task.wait(1)
+                end
             end
         end
     end
 end)
 
--- ── Karakter újratöltés ────────────────────────────────────────────
-Shared.getLP().CharacterAdded:Connect(function(c)
-    S.blocking = false; S.lastBlockAt = 0; S.lastHitAt = 0
-    S.lastHP = math.huge; S.lastStepAt = 0; lastTrig = 0; S.preemptLock = false
-    attachLastHit(c)
-    attachHP(c:WaitForChild("Humanoid"))
-end)
-
-local char = Shared.getLP().Character or Shared.getLP().CharacterAdded:Wait()
-attachLastHit(char)
-attachHP(char:WaitForChild("Humanoid"))
-
--- ── Publikus API ───────────────────────────────────────────────────
 local Module = {}
 function Module.getStats()
-    return {
-        enabled    = Cfg.get("BlockParry","enabled"),
-        blocking   = S.blocking,
-        totalBlock = S.totalBlock,
-        totalParry = S.totalParry,
-    }
+    return { enabled=Cfg.get("DragonBall","enabled"), earth=S.ec, namek=S.nc, status=S.status }
 end
-
-print("[AutoBlockParry] ✓")
+print("[AutoDragonBall] OK")
 return Module
