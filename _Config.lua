@@ -1,9 +1,64 @@
---[[
-    _Config  –  Központi Konfiguráció
-    Minden modul innen olvassa a beállításait és az enabled státuszokat.
-]]
+local Config = {}
 
-local Cfg = {
+local listeners = {}
+
+function Config.onChange(fn)
+    table.insert(listeners, fn)
+    return #listeners
+end
+
+function Config.removeListener(idx)
+    listeners[idx] = nil
+end
+
+local function fire(mod, key, val)
+    for _, fn in pairs(listeners) do
+        task.spawn(pcall, fn, mod, key, val)
+    end
+end
+
+local data = {}
+
+function Config.set(mod, key, value)
+    if not data[mod] then data[mod] = {} end
+    data[mod][key] = value
+    fire(mod, key, value)
+end
+
+function Config.get(mod, key)
+    return data[mod] and data[mod][key]
+end
+
+function Config.toggle(mod)
+    local current = Config.get(mod, "enabled")
+    Config.set(mod, "enabled", not current)
+    return not current
+end
+
+function Config.getAll()
+    local copy = {}
+    for mod, cfg in pairs(data) do
+        copy[mod] = {}
+        for k, v in pairs(cfg) do copy[mod][k] = v end
+    end
+    return copy
+end
+
+function Config.setAllEnabled(enabled)
+    for mod in pairs(data) do
+        Config.set(mod, "enabled", enabled)
+    end
+end
+
+function Config.getModules()
+    local list = {}
+    for mod in pairs(data) do table.insert(list, mod) end
+    table.sort(list)
+    return list
+end
+
+-- Alapértelmezett értékek (beleértve a KillAurát is!)
+local defaults = {
     KillAura = {
         enabled             = true,
         RANGE               = 24,
@@ -23,109 +78,107 @@ local Cfg = {
         UNDERGROUND_ENABLED = true,
         FREEZE_ENABLED      = true,
     },
+
     BlockParry = {
-        enabled             = false, -- Alapból kikapcsolva
-        PARRY_DELAY         = 0.06,
-        STEP_COOLDOWN       = 0.52,
-        BLOCK_HOLD          = 0.55,
-        BLOCK_COOLDOWN      = 0.22,
-        STEP_DIRS           = { "back", "left", "right" },
-        HP_DROP_MIN         = 0.5,
-        DEDUP_WIN           = 0.07,
-        PREEMPTIVE          = false,
-        PREEMPTIVE_RANGE    = 20,
-        PREEMPTIVE_REHOLD   = 0.48,
+        enabled           = false,
+        PARRY_DELAY       = 0.06,
+        BLOCK_HOLD        = 0.55,
+        BLOCK_COOLDOWN    = 0.22,
+        STEP_COOLDOWN     = 0.52,
+        STEP_DIRS         = { "back", "left", "right" },
+        HP_DROP_MIN       = 0.5,
+        DEDUP_WIN         = 0.07,
+        PREEMPTIVE        = false,
+        PREEMPTIVE_RANGE  = 20,
+        PREEMPTIVE_REHOLD = 0.48,
     },
+
     Vanish = {
-        enabled             = false, -- Alapból kikapcsolva
-        VANISH_DELAY        = 0.04,
-        VANISH_COOLDOWN     = 0.46,
-        KI_VANISH           = 0.20,
-        KI_STEP             = 0.06,
-        CHAIN_MAX           = 4,
-        CHAIN_RESET         = 2.5,
-        POST_STEP           = true,
-        POST_STEP_DELAY     = 0.10,
-        STEP_DIRS           = { "back", "left", "right" },
-        FALLBACK            = { "SideStep", "Block" },
-        BLOCK_HOLD          = 0.55,
-        STEP_COOLDOWN       = 0.52,
-        HP_DROP_MIN         = 0.5,
-        DEDUP_WIN           = 0.07,
+        enabled           = false,
+        VANISH_DELAY      = 0.04,
+        VANISH_COOLDOWN   = 0.46,
+        KI_VANISH         = 0.20,
+        KI_STEP           = 0.06,
+        CHAIN_MAX         = 4,
+        CHAIN_RESET       = 2.5,
+        POST_STEP         = true,
+        POST_STEP_DELAY   = 0.10,
+        STEP_DIRS         = { "back", "left", "right" },
+        FALLBACK          = { "SideStep", "Block" },
+        BLOCK_HOLD        = 0.55,
+        STEP_COOLDOWN     = 0.52,
+        HP_DROP_MIN       = 0.5,
+        DEDUP_WIN         = 0.07,
     },
+
     DragonBall = {
-        enabled             = false, -- Alapból kikapcsolva
-        TP_OFFSET_Y         = 3,
-        TP_DELAY            = 0.30,
-        MAX_RETRIES         = 4,
-        RETRY_DELAY         = 0.18,
-        AUTO_SUMMON         = false,
-        LOOP                = true,
-        EARTH               = { "DragonBall_01","DragonBall_02","DragonBall_03","DragonBall_04","DragonBall_05","DragonBall_06","DragonBall_07" },
-        NAMEK               = { "NamekDragonBall_01","NamekDragonBall_02","NamekDragonBall_03","NamekDragonBall_04","NamekDragonBall_05","NamekDragonBall_06","NamekDragonBall_07" },
+        enabled           = false,
+        TP_OFFSET_Y       = 3,
+        TP_DELAY          = 0.30,
+        MAX_RETRIES       = 4,
+        RETRY_DELAY       = 0.18,
+        AUTO_SUMMON       = false,
+        LOOP              = true,
+        EARTH = {
+            "DragonBall_01","DragonBall_02","DragonBall_03",
+            "DragonBall_04","DragonBall_05","DragonBall_06","DragonBall_07",
+        },
+        NAMEK = {
+            "NamekDragonBall_01","NamekDragonBall_02","NamekDragonBall_03",
+            "NamekDragonBall_04","NamekDragonBall_05","NamekDragonBall_06",
+            "NamekDragonBall_07",
+        },
     },
+
     Loot = {
-        enabled             = false, -- Alapból kikapcsolva
-        TP_OFFSET_Y         = 3,
-        TP_DELAY            = 0.22,
-        SCAN_INTERVAL       = 1.0,
-        MAX_PER_SCAN        = 40,
-        LOOT_FOLDERS        = { "LootDrops", "MapLoot", "WorldDrops", "IngredientPickups" },
+        enabled           = false,
+        TP_OFFSET_Y       = 3,
+        TP_DELAY          = 0.22,
+        SCAN_INTERVAL     = 1.0,
+        MAX_PER_SCAN      = 40,
+        LOOT_FOLDERS      = { "LootDrops","MapLoot","WorldDrops","IngredientPickups" },
     },
+
     Senzu = {
-        enabled             = false, -- Alapból kikapcsolva
-        CALL_DELAY          = 0.55,
-        CHECK_INTERVAL      = 25,
-        AUTO_REPLANT        = true,
-        TP_TO_FARM          = true,
-        TP_OFFSET_Y         = 4,
+        enabled           = false,
+        CALL_DELAY        = 0.55,
+        CHECK_INTERVAL    = 25,
+        AUTO_REPLANT      = true,
+        TP_TO_FARM        = true,
+        TP_OFFSET_Y       = 4,
     },
+
     Daily = {
-        enabled             = false, -- Alapból kikapcsolva
-        CALL_DELAY          = 0.70,
-        MAX_RETRIES         = 3,
-        RETRY_DELAY         = 1.2,
-        SPIN_MAX            = 7,
-        AUTO_LOOP           = true,
-        LOOP_HOURS          = 24,
-        CLAIM_EXTRAS        = true,
+        enabled           = false,
+        CALL_DELAY        = 0.70,
+        MAX_RETRIES       = 3,
+        SPIN_MAX          = 7,
+        AUTO_LOOP         = true,
+        LOOP_HOURS        = 24,
+        CLAIM_EXTRAS      = true,
     },
+
     NPCFarm = {
-        enabled             = false, -- Alapból kikapcsolva
-        LIGHT_COUNT         = 4,
-        HEAVY_AFTER_LIGHT   = true,
-        GRAB_ENABLED        = true,
-        GRAB_HOLD           = 0.32,
-        ATTACK_CD           = 0.18,
-        COMBO_DELAY         = 0.22,
-        SCAN_RANGE          = 150,
-        LOOP_DELAY          = 0.5,
-        TELEPORT_TO_NPC     = true,
-        TP_OFFSET           = Vector3.new(0, 1, 2),
-    }
+        enabled           = false,
+        LIGHT_COUNT       = 4,
+        HEAVY_AFTER_LIGHT = true,
+        GRAB_ENABLED      = true,
+        GRAB_HOLD         = 0.32,
+        ATTACK_CD         = 0.18,
+        COMBO_DELAY       = 0.22,
+        TELEPORT_TO_NPC   = true,
+        TP_OFFSET         = Vector3.new(0,1,2),
+        SCAN_RANGE        = 150,
+        LOOP_DELAY        = 0.5,
+    },
 }
 
-local listeners = {}
-
-local Module = {}
-function Module.get(modName, key)
-    if not Cfg[modName] then return nil end
-    if key == nil then return Cfg[modName] end
-    return Cfg[modName][key]
+for mod, cfg in pairs(defaults) do
+    data[mod] = {}
+    for k, v in pairs(cfg) do data[mod][k] = v end
 end
 
-function Module.set(modName, key, val)
-    if Cfg[modName] then
-        Cfg[modName][key] = val
-        for _, cb in ipairs(listeners) do
-            pcall(cb, modName, key, val)
-        end
-    end
-end
-
-function Module.onChange(cb)
-    table.insert(listeners, cb)
-end
-
-_G.KillAuraCFG = Cfg.KillAura
-return Module
+-- Biztosítjuk a kompatibilitást a KillAura scripttel is:
+_G.KillAuraCFG = data.KillAura
+_G._AIO_Config = Config
+return Config
