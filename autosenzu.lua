@@ -3,8 +3,6 @@ local Shared = require(script.Parent._Shared)
 
 local S = { status = "Idle", nextIn = 0, cycles = 0 }
 
-local function invoke(name, ...) return Shared.invoke(name, ...) end
-
 local function findFarm()
     return workspace:FindFirstChild("SenzuFarmLocal")
         or workspace:FindFirstChild("SenzuFarm")
@@ -29,7 +27,8 @@ end
 
 local function tpTo(obj)
     if not Cfg.get("Senzu","TP_TO_FARM") then return end
-    local hrp  = Shared.getHRP(); if not hrp then return end
+    local hrp  = Shared.getHRP()
+    if not hrp then return end
     local part = Shared.getPart(obj) or (obj:IsA("BasePart") and obj)
     if part then
         hrp.CFrame = part.CFrame + Vector3.new(0, Cfg.get("Senzu","TP_OFFSET_Y") or 4, 0)
@@ -39,16 +38,18 @@ end
 
 local function runCycle()
     local cd = Cfg.get("Senzu","CALL_DELAY") or 0.55
-    S.status = "Farm lekérése..."
-    invoke("GetSenzuFarm"); task.wait(cd)
+    S.status = "Farm lekérese..."
+    Shared.invoke("GetSenzuFarm")
+    task.wait(cd)
 
     local farm  = findFarm()
     local plots = findPlots(farm)
     if farm then tpTo(farm) end
 
-    -- ARATÁS
-    S.status = "Aratás..."
-    invoke("RequestHarvest"); task.wait(cd)
+    S.status = "Aratas..."
+    Shared.invoke("RequestHarvest")
+    task.wait(cd)
+
     for _, plot in ipairs(plots) do
         local part = Shared.getPart(plot) or (plot:IsA("BasePart") and plot)
         if part then
@@ -57,7 +58,7 @@ local function runCycle()
                 if hrp then hrp.CFrame = part.CFrame + Vector3.new(0,4,0) end
                 task.wait(0.08)
             end
-            invoke("RequestHarvestAt", part.Position)
+            Shared.invoke("RequestHarvestAt", part.Position)
             for _, pp in ipairs(plot:GetDescendants()) do
                 if pp:IsA("ProximityPrompt") then pcall(fireproximityprompt, pp) end
             end
@@ -65,52 +66,56 @@ local function runCycle()
         end
     end
 
-    if not Cfg.get("Senzu","AUTO_REPLANT") then S.status = "Aratás kész!"; return end
-
-    -- ÜLTETÉS
-    S.status = "Ültetés..."; task.wait(cd)
-    invoke("RequestPlant"); task.wait(cd)
-    for _, plot in ipairs(plots) do
-        local part = Shared.getPart(plot) or (plot:IsA("BasePart") and plot)
-        if part then
-            if Cfg.get("Senzu","TP_TO_FARM") then
-                local hrp = Shared.getHRP()
-                if hrp then hrp.CFrame = part.CFrame + Vector3.new(0,4,0) end
-                task.wait(0.08)
+    if Cfg.get("Senzu","AUTO_REPLANT") then
+        S.status = "Ultetes..."
+        task.wait(cd)
+        Shared.invoke("RequestPlant")
+        task.wait(cd)
+        for _, plot in ipairs(plots) do
+            local part = Shared.getPart(plot) or (plot:IsA("BasePart") and plot)
+            if part then
+                if Cfg.get("Senzu","TP_TO_FARM") then
+                    local hrp = Shared.getHRP()
+                    if hrp then hrp.CFrame = part.CFrame + Vector3.new(0,4,0) end
+                    task.wait(0.08)
+                end
+                Shared.invoke("RequestPlantAt", part.Position)
+                for _, pp in ipairs(plot:GetDescendants()) do
+                    if pp:IsA("ProximityPrompt") then pcall(fireproximityprompt, pp) end
+                end
+                task.wait(cd * 0.4)
             end
-            invoke("RequestPlantAt", part.Position)
-            for _, pp in ipairs(plot:GetDescendants()) do
-                if pp:IsA("ProximityPrompt") then pcall(fireproximityprompt, pp) end
-            end
-            task.wait(cd * 0.4)
         end
     end
-    S.cycles += 1
-    S.status = "Kész! Ciklus #" .. S.cycles
+
+    S.cycles = S.cycles + 1
+    S.status = "Kesz! Ciklus #" .. S.cycles
 end
 
 task.spawn(function()
     task.wait(2)
     while true do
         if not Cfg.get("Senzu","enabled") then
-            S.status = "Kikapcsolva"; task.wait(1); continue
+            S.status = "Kikapcsolva"
+            task.wait(1)
+        else
+            local ok, err = pcall(runCycle)
+            if not ok then S.status = "Hiba: " .. tostring(err) end
+            local interval = Cfg.get("Senzu","CHECK_INTERVAL") or 25
+            S.nextIn = tick() + interval
+            task.wait(interval)
         end
-        local ok, err = pcall(runCycle)
-        if not ok then S.status = "Hiba: " .. tostring(err) end
-        local interval = Cfg.get("Senzu","CHECK_INTERVAL") or 25
-        S.nextIn = tick() + interval
-        task.wait(interval)
     end
 end)
 
 local Module = {}
 function Module.getStats()
     return {
-        enabled  = Cfg.get("Senzu","enabled"),
-        status   = S.status,
-        cycles   = S.cycles,
-        nextIn   = math.max(0, math.floor(S.nextIn - tick())),
+        enabled = Cfg.get("Senzu","enabled"),
+        status  = S.status,
+        cycles  = S.cycles,
+        nextIn  = math.max(0, math.floor(S.nextIn - tick())),
     }
 end
-print("[AutoSenzu] ✓")
+print("[AutoSenzu] OK")
 return Module
