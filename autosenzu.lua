@@ -1,55 +1,26 @@
--- ══════════════════════════════════════════════════════════════════════
-local CFG = {
-    CALL_DELAY      = 0.55,
-    CHECK_INTERVAL  = 25,
-    AUTO_REPLANT    = true,
-    TP_TO_FARM      = true,
-    TP_OFFSET_Y     = 4,
-    DEBUG           = false,
-}
+local Cfg    = require(script.Parent._Config)
+local Shared = require(script.Parent._Shared)
 
-local Players = game:GetService("Players")
-local RS      = game:GetService("ReplicatedStorage")
-local LP      = Players.LocalPlayer
-local char    = LP.Character or LP.CharacterAdded:Wait()
-local hum     = char:WaitForChild("Humanoid")
-local hrp     = char:WaitForChild("HumanoidRootPart")
+local S = { status = "Idle", nextIn = 0, cycles = 0 }
 
-LP.CharacterAdded:Connect(function(c)
-    char=c; hum=c:WaitForChild("Humanoid"); hrp=c:WaitForChild("HumanoidRootPart")
-end)
-
-local RemFolder = RS:WaitForChild("Remotes",10)
-local function getRemote(name)
-    return RemFolder and RemFolder:FindFirstChild(name)
-end
-
-local function invokeRF(name,...)
-    local r=getRemote(name); if not r then return nil end
-    local ok,res=pcall(function(...)
-        return r:IsA("RemoteFunction") and r:InvokeServer(...)
-            or (r:FireServer(...) or true)
-    end,...)
-    return ok and res or nil
-end
+local function invoke(name, ...) return Shared.invoke(name, ...) end
 
 local function findFarm()
-    local farm = workspace:FindFirstChild("SenzuFarmLocal")
+    return workspace:FindFirstChild("SenzuFarmLocal")
         or workspace:FindFirstChild("SenzuFarm")
         or workspace:FindFirstChild("KameHouse")
-    return farm
 end
 
 local function findPlots(farm)
     if not farm then return {} end
-    local plots={}
-    for _,desc in ipairs(farm:GetDescendants()) do
-        local low=desc.Name:lower()
+    local plots = {}
+    for _, desc in ipairs(farm:GetDescendants()) do
+        local low = desc.Name:lower()
         if desc:IsA("BasePart") or desc:IsA("Model") then
             if low:find("plot") or low:find("slot") or low:find("bed")
             or low:find("grown") or low:find("seedling") or low:find("seed")
             or low:find("adult") or low:find("midling") or low:find("seeding") then
-                table.insert(plots,desc)
+                table.insert(plots, desc)
             end
         end
     end
@@ -57,80 +28,89 @@ local function findPlots(farm)
 end
 
 local function tpTo(obj)
-    if not CFG.TP_TO_FARM or not hrp then return end
-    local part = obj.PrimaryPart or (obj:IsA("BasePart") and obj)
-        or obj:FindFirstChildWhichIsA("BasePart")
+    if not Cfg.get("Senzu","TP_TO_FARM") then return end
+    local hrp  = Shared.getHRP(); if not hrp then return end
+    local part = Shared.getPart(obj) or (obj:IsA("BasePart") and obj)
     if part then
-        hrp.CFrame = part.CFrame + Vector3.new(0,CFG.TP_OFFSET_Y,0)
+        hrp.CFrame = part.CFrame + Vector3.new(0, Cfg.get("Senzu","TP_OFFSET_Y") or 4, 0)
         task.wait(0.2)
     end
 end
 
 local function runCycle()
-    if _G.KillAuraCFG and _G.KillAuraCFG.AUTO_SENZU_ENABLED == false then return end
-
-    invokeRF("GetSenzuFarm")
-    task.wait(CFG.CALL_DELAY)
+    local cd = Cfg.get("Senzu","CALL_DELAY") or 0.55
+    S.status = "Farm lekérése..."
+    invoke("GetSenzuFarm"); task.wait(cd)
 
     local farm  = findFarm()
     local plots = findPlots(farm)
     if farm then tpTo(farm) end
 
-    invokeRF("RequestHarvest")
-    task.wait(CFG.CALL_DELAY)
-
-    for _,plot in ipairs(plots) do
-        local part = plot:IsA("BasePart") and plot
-            or (plot:IsA("Model") and (plot.PrimaryPart or plot:FindFirstChildWhichIsA("BasePart")))
+    -- ARATÁS
+    S.status = "Aratás..."
+    invoke("RequestHarvest"); task.wait(cd)
+    for _, plot in ipairs(plots) do
+        local part = Shared.getPart(plot) or (plot:IsA("BasePart") and plot)
         if part then
-            if CFG.TP_TO_FARM and hrp then
-                hrp.CFrame = part.CFrame + Vector3.new(0,CFG.TP_OFFSET_Y,0)
+            if Cfg.get("Senzu","TP_TO_FARM") then
+                local hrp = Shared.getHRP()
+                if hrp then hrp.CFrame = part.CFrame + Vector3.new(0,4,0) end
                 task.wait(0.08)
             end
-            invokeRF("RequestHarvestAt", part.Position)
-            for _,pp in ipairs(plot:GetDescendants()) do
-                if pp:IsA("ProximityPrompt") then pcall(fireproximityprompt,pp) end
+            invoke("RequestHarvestAt", part.Position)
+            for _, pp in ipairs(plot:GetDescendants()) do
+                if pp:IsA("ProximityPrompt") then pcall(fireproximityprompt, pp) end
             end
-            task.wait(CFG.CALL_DELAY * 0.4)
+            task.wait(cd * 0.4)
         end
     end
 
-    if not CFG.AUTO_REPLANT then return end
+    if not Cfg.get("Senzu","AUTO_REPLANT") then S.status = "Aratás kész!"; return end
 
-    invokeRF("RequestPlant")
-    task.wait(CFG.CALL_DELAY)
-
-    for _,plot in ipairs(plots) do
-        local part = plot:IsA("BasePart") and plot
-            or (plot:IsA("Model") and (plot.PrimaryPart or plot:FindFirstChildWhichIsA("BasePart")))
+    -- ÜLTETÉS
+    S.status = "Ültetés..."; task.wait(cd)
+    invoke("RequestPlant"); task.wait(cd)
+    for _, plot in ipairs(plots) do
+        local part = Shared.getPart(plot) or (plot:IsA("BasePart") and plot)
         if part then
-            if CFG.TP_TO_FARM and hrp then
-                hrp.CFrame = part.CFrame + Vector3.new(0,CFG.TP_OFFSET_Y,0)
+            if Cfg.get("Senzu","TP_TO_FARM") then
+                local hrp = Shared.getHRP()
+                if hrp then hrp.CFrame = part.CFrame + Vector3.new(0,4,0) end
                 task.wait(0.08)
             end
-            invokeRF("RequestPlantAt", part.Position)
-            for _,pp in ipairs(plot:GetDescendants()) do
-                if pp:IsA("ProximityPrompt") then pcall(fireproximityprompt,pp) end
+            invoke("RequestPlantAt", part.Position)
+            for _, pp in ipairs(plot:GetDescendants()) do
+                if pp:IsA("ProximityPrompt") then pcall(fireproximityprompt, pp) end
             end
-            task.wait(CFG.CALL_DELAY * 0.4)
+            task.wait(cd * 0.4)
         end
     end
+    S.cycles += 1
+    S.status = "Kész! Ciklus #" .. S.cycles
 end
 
 task.spawn(function()
     task.wait(2)
     while true do
-        if _G.KillAuraCFG and _G.KillAuraCFG.AUTO_SENZU_ENABLED == false then
-            task.wait(2)
-            continue
+        if not Cfg.get("Senzu","enabled") then
+            S.status = "Kikapcsolva"; task.wait(1); continue
         end
-
-        pcall(runCycle)
-        for i = CFG.CHECK_INTERVAL, 1, -1 do
-            if _G.KillAuraCFG and _G.KillAuraCFG.AUTO_SENZU_ENABLED == false then break end
-            task.wait(1)
-        end
+        local ok, err = pcall(runCycle)
+        if not ok then S.status = "Hiba: " .. tostring(err) end
+        local interval = Cfg.get("Senzu","CHECK_INTERVAL") or 25
+        S.nextIn = tick() + interval
+        task.wait(interval)
     end
 end)
 
-print("[AutoSenzu] ✓ Betöltve és összekötve a Master GUI-val")
+local Module = {}
+function Module.getStats()
+    return {
+        enabled  = Cfg.get("Senzu","enabled"),
+        status   = S.status,
+        cycles   = S.cycles,
+        nextIn   = math.max(0, math.floor(S.nextIn - tick())),
+    }
+end
+print("[AutoSenzu] ✓")
+return Module
