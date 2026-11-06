@@ -1,4 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════
+-- Domka modz - Master Loader
+-- ═══════════════════════════════════════════════════════════════
+
 local repoBase = "https://raw.githubusercontent.com/Dayooka/domka-modz/refs/heads/main/"
 
 _G.KillAuraCFG = {
@@ -52,7 +55,7 @@ for _, fileName in ipairs(modulesToLoad) do
     if not success then
         warn("[DOMKA MODZ] Hiba a(z) " .. fileName .. " betöltésekor: ", err)
     else
-        print("[DOMKA MODZ] Sikeresen betöltve: " .. fileName) -- Itt volt a + helyett ..
+        print("[DOMKA MODZ] Sikeresen betöltve: " .. fileName)
     end
 end
 
