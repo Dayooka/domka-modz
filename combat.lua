@@ -17,48 +17,39 @@ local LocalPlayer = Players.LocalPlayer
 
 -- ┌──────────────────────────────────────────────────────────────┐
 -- │  KONFIGURÁCIÓ                                                │
--- │  _G.KillAuraCFG = CFG → külső GUI scriptből elérhető        │
 -- └──────────────────────────────────────────────────────────────┘
 local CFG = {
-    -- ── Fő kapcsoló ───────────────────────────────────────────
-    ENABLED           = true,   -- GUI: _G.KillAuraCFG.ENABLED = false
+    ENABLED           = true,   -- _G.KillAuraCFG.ENABLED = false → ki
 
-    -- ── Aura ──────────────────────────────────────────────────
-    RANGE             = 24,     -- normál hatótáv (studs)
-    CHASE_RANGE       = 50,     -- knockback után követési táv
+    RANGE             = 24,
+    CHASE_RANGE       = 50,
     MAX_TARGETS       = 10,
     BURST_DELAY       = 0.004,
-    MULTIPLY          = 2,      -- packet szorzás
+    MULTIPLY          = 2,
     MULT_DELAY        = 0.006,
 
-    -- ── Célpont prioritás ─────────────────────────────────────
-    -- "nearest"   → legközelebb lévő először
-    -- "lowest_hp" → legkevesebb HP-val rendelkező először
-    -- "mixed"     → HP + távolság kombinálva
+    -- "nearest" | "lowest_hp" | "mixed"
     TARGET_PRIORITY   = "nearest",
 
-    -- ── Player targeting ──────────────────────────────────────
     ATTACK_PLAYERS    = false,
 
-    -- ── Execution (Grab) ──────────────────────────────────────
-    EXEC_THRESHOLD    = 0.15,   -- HP% alatt grab (is_knocked_out is triggerel)
-    EXEC_HOLD         = 0.3,    -- grab hold time (dok: Grab.minInterval = 0.3)
-    EXEC_CD           = 2.0,    -- újra-grab cooldown
+    -- Knockdown/execution
+    -- Az NPC-t knockoltnak tekintjük ha:
+    --   ActionState.isDowned(npc) → ToggleRagdoll = true
+    --   VAGY hp <= EXEC_THRESHOLD
+    EXEC_THRESHOLD    = 0.15,
+    EXEC_HOLD         = 0.3,
+    EXEC_CD           = 2.5,
 
-    -- ── Pozíció ───────────────────────────────────────────────
-    BEHIND_OFFSET     = 2.5,    -- studs mögötte
-    BEHIND_RATE       = 0.03,   -- mögé teleport frekvencia (s)
-    BEHIND_ON_ATTACK  = true,   -- minden attack után azonnal mögé
+    BEHIND_OFFSET     = 2.5,
+    BEHIND_RATE       = 0.08,
 
-    -- ── Underground ───────────────────────────────────────────
-    UNDERGROUND_DEPTH = 10,     -- studs mélység (csökkentve: kevésbé bugos)
-    UNDERGROUND_ENABLED = true, -- föld alá bújás engedélyezése
+    UNDERGROUND_DEPTH = 10,
+    UNDERGROUND_ENABLED = true,
 
-    -- ── Freeze ────────────────────────────────────────────────
-    FREEZE_ENABLED    = true,   -- NPC-k mozgásának letiltása
+    FREEZE_ENABLED    = true,
 }
 
--- GUI-ból elérhető globális referencia
 _G.KillAuraCFG = CFG
 
 -- ┌──────────────────────────────────────────────────────────────┐
@@ -70,25 +61,23 @@ local function poisonModules()
     if ActionConfig.Grab        then ActionConfig.Grab.blockedBy        = {} end
     CombatPublic.meleeApproachStop = function() return 0.1 end
     CombatPublic.meleeLungeTravel  = function(dist) return dist - 0.1 end
-    print("[POISON] Modulok módosítva")
+    print("[POISON] OK")
 end
 poisonModules()
 
 -- ┌──────────────────────────────────────────────────────────────┐
 -- │  LOCKON                                                      │
 -- └──────────────────────────────────────────────────────────────┘
-local currentLockTarget = nil
-
-local function setLockOn(target)
-    if currentLockTarget == target then return end
-    currentLockTarget = target
-    pcall(function() LockOn.setLockTarget(target) end)
-    pcall(function() Remotes.SetLockOnTarget:FireServer(target) end)
+local currentLock = nil
+local function setLockOn(t)
+    if currentLock == t then return end
+    currentLock = t
+    pcall(function() LockOn.setLockTarget(t) end)
+    pcall(function() Remotes.SetLockOnTarget:FireServer(t) end)
 end
-
 local function clearLockOn()
-    if not currentLockTarget then return end
-    currentLockTarget = nil
+    if not currentLock then return end
+    currentLock = nil
     pcall(function() LockOn.setLockTarget(nil) end)
     pcall(function() Remotes.SetLockOnTarget:FireServer(nil) end)
 end
@@ -96,57 +85,79 @@ end
 -- ┌──────────────────────────────────────────────────────────────┐
 -- │  __namecall HOOK                                             │
 -- └──────────────────────────────────────────────────────────────┘
-local GET_SPOOF    = { AttackCooldown=true, Swinging=true, HeavyCooldown=true }
-local hookedRemote = Remotes.PerformAction
-local hookBypass   = false
-local oldNamecall
+local SPOOF      = { AttackCooldown=true, Swinging=true, HeavyCooldown=true }
+local hookedRE   = Remotes.PerformAction
+local bypass     = false
+local oldNC
 
-oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    local char   = LocalPlayer.Character
+oldNC = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+    local m    = getnamecallmethod()
+    local char = LocalPlayer.Character
 
-    if method == "GetAttribute" and char and self == char then
-        if GET_SPOOF[select(1,...)] then return nil end
+    if m == "GetAttribute" and char and self == char then
+        if SPOOF[select(1,...)] then return nil end
     end
-    if method == "SetAttribute" and char and self == char then
-        if GET_SPOOF[select(1,...)] then return end
+    if m == "SetAttribute" and char and self == char then
+        if SPOOF[select(1,...)] then return end
     end
-    if method == "FireServer" and self == hookedRemote and not hookBypass then
-        local action = select(1,...) ; local params = select(2,...)
+    if m == "FireServer" and self == hookedRE and not bypass then
+        local action, params = select(1,...), select(2,...)
         if action == "LightAttack" and type(params) == "table" then
             local p = params
             for i = 1, CFG.MULTIPLY do
                 task.delay(i * CFG.MULT_DELAY, function()
-                    hookBypass = true
-                    pcall(function() hookedRemote:FireServer(action, p) end)
-                    hookBypass = false
+                    bypass = true
+                    pcall(function() hookedRE:FireServer(action, p) end)
+                    bypass = false
                 end)
             end
         end
     end
-    return oldNamecall(self, ...)
+    return oldNC(self, ...)
 end))
 
 -- ┌──────────────────────────────────────────────────────────────┐
 -- │  firesignal FLUSH                                            │
 -- └──────────────────────────────────────────────────────────────┘
-local lastSigFlush = 0
+local lastFlush = 0
 local function forceFlush(char)
     if not firesignal then return end
     local now = os.clock()
-    if now - lastSigFlush < 0.05 then return end
-    lastSigFlush = now
+    if now - lastFlush < 0.05 then return end
+    lastFlush = now
     pcall(function() firesignal(char:GetAttributeChangedSignal("AttackCooldown")) end)
 end
 
 -- ┌──────────────────────────────────────────────────────────────┐
--- │  NPC / TARGET KERESÉS                                        │
+-- │  NPC FÁZIS (state machine)                                   │
+-- │                                                              │
+-- │  "attack"  → normál ütés loop                               │
+-- │  "execute" → knockolt/low hp → STOP ütés, Grab              │
+-- │  "dead"    → eltávolítva → cleanup                          │
 -- └──────────────────────────────────────────────────────────────┘
-local trackedTargets = {}
+local function getNPCPhase(npc, hum)
+    if not npc.Parent then return "dead" end
+    if hum.Health <= 0 then
+        -- HP 0 de parent még létezik → lehet hogy kliens desync
+        -- Csak akkor dead ha parent is nil (szerver eltávolította)
+        -- Különben maradjon "execute" fázisban
+        return "execute"
+    end
+    -- isDowned = ToggleRagdoll = true → knockolt
+    if ActionState.isDowned(npc) then return "execute" end
+    -- Alacsony hp → execute fázis
+    local hpPct = hum.Health / math.max(hum.MaxHealth, 1)
+    if hpPct <= CFG.EXEC_THRESHOLD then return "execute" end
+    return "attack"
+end
 
-local function getTargetsInRange(hrp)
-    local r    = {}
-    local seen = {}
+-- ┌──────────────────────────────────────────────────────────────┐
+-- │  TARGET KERESÉS                                              │
+-- └──────────────────────────────────────────────────────────────┘
+local tracked = {}
+
+local function getTargets(hrp)
+    local r, seen = {}, {}
 
     local function tryAdd(model, isPlayer)
         if seen[model] then return end
@@ -154,51 +165,85 @@ local function getTargetsInRange(hrp)
         if not model:IsA("Model") or not model:IsDescendantOf(workspace) then return end
         local hum  = model:FindFirstChildOfClass("Humanoid")
         local root = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso")
-        -- FIX: csak akkor adjuk hozzá ha a szerver is éltnek tartja (parent != nil, HP > 0)
-        if not (hum and hum.Health > 0 and root and model.Parent) then return end
-        local d = (root.Position - hrp.Position).Magnitude
-        local maxRange = trackedTargets[model] and CFG.CHASE_RANGE or CFG.RANGE
-        if d <= maxRange then
-            table.insert(r, { npc=model, root=root, hum=hum, dist=d, isPlayer=isPlayer })
-            trackedTargets[model] = true
-        else
-            trackedTargets[model] = nil
-        end
+        if not (hum and root and model.Parent) then return end
+        -- HP 0 ÉS parent nil → tényleg halott
+        if hum.Health <= 0 and not model.Parent then return end
+
+        local d       = (root.Position - hrp.Position).Magnitude
+        local maxDist = tracked[model] and CFG.CHASE_RANGE or CFG.RANGE
+        if d > maxDist then tracked[model] = nil ; return end
+
+        tracked[model] = true
+        table.insert(r, { npc=model, root=root, hum=hum, dist=d, isPlayer=isPlayer })
     end
 
-    for _, npc in CollectionService:GetTagged(Entities.Tag.NPC) do
-        tryAdd(npc, false)
-    end
-    local npcFolder = workspace:FindFirstChild("NPCs")
-    if npcFolder then
-        for _, npc in npcFolder:GetChildren() do tryAdd(npc, false) end
-    end
+    for _, n in CollectionService:GetTagged(Entities.Tag.NPC) do tryAdd(n, false) end
+    local f = workspace:FindFirstChild("NPCs")
+    if f then for _, n in f:GetChildren() do tryAdd(n, false) end end
     if CFG.ATTACK_PLAYERS then
         for _, pl in Players:GetPlayers() do
-            if pl ~= LocalPlayer and pl.Character then
-                tryAdd(pl.Character, true)
-            end
+            if pl ~= LocalPlayer and pl.Character then tryAdd(pl.Character, true) end
         end
     end
 
-    -- Célpont prioritás rendezés
     if CFG.TARGET_PRIORITY == "lowest_hp" then
-        table.sort(r, function(a, b)
-            return a.hum.Health < b.hum.Health
-        end)
+        table.sort(r, function(a, b) return a.hum.Health < b.hum.Health end)
     elseif CFG.TARGET_PRIORITY == "mixed" then
-        -- Kombó: normált HP (0-1) * 20 + távolság → kisebb = előbb
         table.sort(r, function(a, b)
-            local sA = (a.hum.Health / math.max(a.hum.MaxHealth, 1)) * 20 + a.dist
-            local sB = (b.hum.Health / math.max(b.hum.MaxHealth, 1)) * 20 + b.dist
+            local sA = (a.hum.Health / math.max(a.hum.MaxHealth,1)) * 20 + a.dist
+            local sB = (b.hum.Health / math.max(b.hum.MaxHealth,1)) * 20 + b.dist
             return sA < sB
         end)
-    else -- "nearest" (default)
+    else
         table.sort(r, function(a, b) return a.dist < b.dist end)
     end
-
     return r
 end
+
+-- ┌──────────────────────────────────────────────────────────────┐
+-- │  FREEZE                                                      │
+-- └──────────────────────────────────────────────────────────────┘
+local frozen = {}
+
+local function freezeNPC(npc)
+    if not CFG.FREEZE_ENABLED or frozen[npc] then return end
+    frozen[npc] = true
+    local hum  = npc:FindFirstChildOfClass("Humanoid")
+    local root = npc:FindFirstChild("HumanoidRootPart")
+    if hum then pcall(function()
+        hum.WalkSpeed = 0 ; hum.JumpPower = 0
+        hum.JumpHeight = 0 ; hum.PlatformStand = true
+    end) end
+    if root then pcall(function()
+        root.AssemblyLinearVelocity  = Vector3.new(0, math.min(root.AssemblyLinearVelocity.Y, 0), 0)
+        root.AssemblyAngularVelocity = Vector3.zero
+    end) end
+end
+
+local function unfreezeNPC(npc)
+    if not frozen[npc] then return end
+    frozen[npc] = nil
+    local hum = npc:FindFirstChildOfClass("Humanoid")
+    if hum then pcall(function()
+        hum.WalkSpeed = 16 ; hum.JumpPower = 50
+        hum.JumpHeight = 7.2 ; hum.PlatformStand = false
+    end) end
+end
+
+RunService.Heartbeat:Connect(function()
+    if not CFG.FREEZE_ENABLED then return end
+    for npc in frozen do
+        if not npc.Parent then frozen[npc] = nil ; continue end
+        local hum  = npc:FindFirstChildOfClass("Humanoid")
+        local root = npc:FindFirstChild("HumanoidRootPart")
+        if not hum or not root then continue end
+        pcall(function()
+            hum.WalkSpeed = 0 ; hum.PlatformStand = true
+            root.AssemblyLinearVelocity = Vector3.new(
+                0, math.min(root.AssemblyLinearVelocity.Y, 0), 0)
+        end)
+    end
+end)
 
 -- ┌──────────────────────────────────────────────────────────────┐
 -- │  VALIDÁCIÓ                                                   │
@@ -219,67 +264,7 @@ local function shouldGoUnderground(char)
 end
 
 -- ┌──────────────────────────────────────────────────────────────┐
--- │  FREEZE                                                      │
--- └──────────────────────────────────────────────────────────────┘
-local frozenTargets = {}
-
-local function freezeTarget(model)
-    if not CFG.FREEZE_ENABLED then return end
-    frozenTargets[model] = true
-    local hum = model:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
-    pcall(function()
-        hum.WalkSpeed     = 0
-        hum.JumpPower     = 0
-        hum.JumpHeight    = 0
-        hum.PlatformStand = true
-    end)
-    local root = model:FindFirstChild("HumanoidRootPart")
-    if root then
-        pcall(function()
-            root.AssemblyLinearVelocity  = Vector3.new(0, math.min(root.AssemblyLinearVelocity.Y, 0), 0)
-            root.AssemblyAngularVelocity = Vector3.zero
-        end)
-    end
-end
-
-local function unfreezeTarget(model)
-    frozenTargets[model] = nil
-    local hum = model:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
-    pcall(function()
-        hum.WalkSpeed     = 16
-        hum.JumpPower     = 50
-        hum.JumpHeight    = 7.2
-        hum.PlatformStand = false
-    end)
-end
-
--- Freeze maintenance Heartbeat
-RunService.Heartbeat:Connect(function()
-    if not CFG.FREEZE_ENABLED then return end
-    for model in frozenTargets do
-        if not model.Parent then
-            frozenTargets[model] = nil ; continue
-        end
-        local hum  = model:FindFirstChildOfClass("Humanoid")
-        local root = model:FindFirstChild("HumanoidRootPart")
-        if not hum or not root then continue end
-        pcall(function()
-            hum.WalkSpeed     = 0
-            hum.PlatformStand = true
-            root.AssemblyLinearVelocity = Vector3.new(
-                0, math.min(root.AssemblyLinearVelocity.Y, 0), 0
-            )
-        end)
-    end
-end)
-
--- ┌──────────────────────────────────────────────────────────────┐
--- │  POZÍCIÓ MANAGER                                             │
--- │                                                              │
--- │  FIX: Underground – egyszerű Y-only CFrame set,             │
--- │  NEM * rotation trick → nem bugos                           │
+-- │  POZÍCIÓ                                                     │
 -- └──────────────────────────────────────────────────────────────┘
 local posState = { underground=false, surfaceY=nil, lastBehind=0 }
 
@@ -287,16 +272,14 @@ local function goUnderground(hrp)
     if posState.underground then return end
     posState.underground = true
     posState.surfaceY    = hrp.Position.Y
-    -- FIX: csak Y-t változtatjuk, XZ és rotation érintetlen
     hrp.CFrame = hrp.CFrame + Vector3.new(0, -CFG.UNDERGROUND_DEPTH, 0)
 end
 
 local function maintainUnderground(hrp)
-    if not posState.underground or not posState.surfaceY then return end
-    local targetY = posState.surfaceY - CFG.UNDERGROUND_DEPTH
-    -- Csak akkor javítjuk ha elcsúszott
-    if math.abs(hrp.Position.Y - targetY) > 1 then
-        hrp.CFrame = hrp.CFrame + Vector3.new(0, targetY - hrp.Position.Y, 0)
+    if not posState.surfaceY then return end
+    local want = posState.surfaceY - CFG.UNDERGROUND_DEPTH
+    if math.abs(hrp.Position.Y - want) > 2 then
+        hrp.CFrame = hrp.CFrame + Vector3.new(0, want - hrp.Position.Y, 0)
     end
 end
 
@@ -304,48 +287,35 @@ local function returnToSurface(hrp)
     if not posState.underground then return end
     posState.underground = false
     if posState.surfaceY then
-        -- Visszateleportálás: Y visszaállítása
         hrp.CFrame = hrp.CFrame + Vector3.new(0, posState.surfaceY - hrp.Position.Y, 0)
         posState.surfaceY = nil
     end
 end
 
-local function teleportBehind(hrp, npcRoot, force)
+local function teleportBehind(hrp, npcRoot)
     local now = os.clock()
-    if not force and now - posState.lastBehind < CFG.BEHIND_RATE then return end
+    if now - posState.lastBehind < CFG.BEHIND_RATE then return end
     posState.lastBehind = now
-    -- NPC háta mögötti pozíció
     local behind = npcRoot.Position - npcRoot.CFrame.LookVector * CFG.BEHIND_OFFSET
-    -- Ugyanazon Y magasság mint az NPC
     behind = Vector3.new(behind.X, npcRoot.Position.Y, behind.Z)
-    -- Akadály ellenőrzés
     local rc = RaycastParams.new()
     rc.FilterType = Enum.RaycastFilterType.Exclude
     rc.FilterDescendantsInstances = {LocalPlayer.Character}
     rc.IgnoreWater = true
-    local dir = behind - npcRoot.Position
-    if dir.Magnitude > 0.1 and workspace:Raycast(npcRoot.Position, dir, rc) then return end
-    -- CFrame.lookAt → felé nézünk az NPC pozíciójából
+    local d = behind - npcRoot.Position
+    if d.Magnitude > 0.1 and workspace:Raycast(npcRoot.Position, d, rc) then return end
     hrp.CFrame = CFrame.lookAt(behind, npcRoot.Position)
 end
 
-local function chaseTarget(hrp, npcRoot)
-    local delta = npcRoot.Position - hrp.Position
-    if delta.Magnitude <= CFG.RANGE then return end
-    local dest = npcRoot.Position - npcRoot.CFrame.LookVector * CFG.BEHIND_OFFSET
-    dest = Vector3.new(dest.X, npcRoot.Position.Y, dest.Z)
-    hrp.CFrame = CFrame.lookAt(dest, npcRoot.Position)
-end
-
 -- ┌──────────────────────────────────────────────────────────────┐
--- │  CFRAME SZÁMÍTÁS                                             │
+-- │  CFRAME                                                      │
 -- └──────────────────────────────────────────────────────────────┘
-local function computeAttackCFrame(char, hrp, npc, npcRoot)
+local function computeCF(char, hrp, npc, root)
     if char:GetAttribute("InClash") or char:GetAttribute("Pinned") then return hrp.CFrame end
     if npc:GetAttribute("InSafeZone") then return hrp.CFrame end
     if ActionState.isUntrackable and ActionState.isUntrackable(npc) then return hrp.CFrame end
 
-    local delta = npcRoot.Position - hrp.Position
+    local delta = root.Position - hrp.Position
     local dist  = delta.Magnitude
     if dist < 0.01 then return hrp.CFrame end
 
@@ -355,7 +325,7 @@ local function computeAttackCFrame(char, hrp, npc, npcRoot)
     local maxD = CombatPublic.MELEE_APPROACH_MAX
 
     if dist <= stop or dist > maxD then
-        local flat = Vector3.new(npcRoot.Position.X, hrp.Position.Y, npcRoot.Position.Z)
+        local flat = Vector3.new(root.Position.X, hrp.Position.Y, root.Position.Z)
         return (flat - hrp.Position).Magnitude > 0.01
             and CFrame.lookAt(hrp.Position, flat) or hrp.CFrame
     end
@@ -367,205 +337,64 @@ local function computeAttackCFrame(char, hrp, npc, npcRoot)
     local unit   = delta.Unit
     local travel = CombatPublic.meleeLungeTravel(dist, stop)
     local hit    = workspace:Raycast(hrp.Position, unit * travel, rc)
-    local actual = hit and math.max(0, (hit.Position - hrp.Position).Magnitude - 2) or travel
+    local actual = hit and math.max(0,(hit.Position-hrp.Position).Magnitude-2) or travel
     if actual <= 0.1 then return hrp.CFrame end
-    return CFrame.lookAt(hrp.Position + unit * actual, npcRoot.Position)
+    return CFrame.lookAt(hrp.Position + unit * actual, root.Position)
 end
 
 local function syncCombo(char)
-    local ok, style = pcall(CombatStylePublic.of, char)
-    if ok and style and style.lights then
-        local _ = (char:GetAttribute("AttackSequence") or 0) % #style.lights + 1
+    local ok, s = pcall(CombatStylePublic.of, char)
+    if ok and s and s.lights then
+        local _ = (char:GetAttribute("AttackSequence") or 0) % #s.lights + 1
     end
 end
 
 -- ┌──────────────────────────────────────────────────────────────┐
--- │  STATE KEZELÉS                                               │
+-- │  GRAB EXECUTION                                              │
 -- └──────────────────────────────────────────────────────────────┘
-local npcState = {}
--- [model] = {
---   executing  = bool,
---   lastExec   = number,
---   hpConn     = RBXScriptConnection,
---   kdConn     = RBXScriptConnection,  (knockdown)
---   kbConn     = RBXScriptConnection,  (knockback)
---   parentConn = RBXScriptConnection,  (parent removed = szerver ölte meg)
--- }
+local execState = {}
+-- [npc] = { grabbing=bool, lastExec=number }
 
-local function cleanupEntry(model)
-    local st = npcState[model]
-    if not st then return end
-    if st.hpConn     then st.hpConn:Disconnect()     end
-    if st.kdConn     then st.kdConn:Disconnect()     end
-    if st.kbConn     then st.kbConn:Disconnect()     end
-    if st.parentConn then st.parentConn:Disconnect() end
-    unfreezeTarget(model)
-    npcState[model]       = nil
-    trackedTargets[model] = nil
-    if currentLockTarget == model then clearLockOn() end
-end
-
-local function ensureState(model)
-    if not npcState[model] then
-        npcState[model] = {
-            executing  = false,
-            lastExec   = 0,
-            hpConn     = nil,
-            kdConn     = nil,
-            kbConn     = nil,
-            parentConn = nil,
-        }
+local function tryExec(char, hrp, npc, root)
+    local st = execState[npc]
+    if not st then
+        execState[npc] = { grabbing=false, lastExec=0 }
+        st = execState[npc]
     end
-    return npcState[model]
-end
-
-local function cleanup()
-    for model in npcState do
-        if not model.Parent then
-            cleanupEntry(model)
-        end
-    end
-end
-
--- ┌──────────────────────────────────────────────────────────────┐
--- │  EXECUTION (GRAB)                                            │
--- │                                                              │
--- │  FIX: execGrab külön flaggel blokkol hogy ne                │
--- │  triggerelődjön többször egyszerre                           │
--- └──────────────────────────────────────────────────────────────┘
-Remotes.GrabCutscene.OnClientEvent:Connect(function()
-    -- Grab cutscene érkezett → execution sikeresen feldolgozva
-end)
-
-local function execGrab(char, hrp, npc, npcRoot, st)
-    if st.executing then return end
+    if st.grabbing then return end
     local now = os.clock()
     if now - st.lastExec < CFG.EXEC_CD then return end
-    -- Karakter validáció (mi vagyunk-e abban a helyzetben hogy grabbelni tudjunk)
     if ActionState.isIncapacitated(char) then return end
     if char:GetAttribute("Grabbing") then return end
-    -- Az NPC legyen még életben (parent check → szerver oldali igazolás)
     if not npc.Parent then return end
 
-    st.executing = true
-    st.lastExec  = now
+    st.grabbing = true
+    st.lastExec = now
 
     setLockOn(npc)
-    local grabCF = computeAttackCFrame(char, hrp, npc, npcRoot)
 
-    Remotes.PerformAction:FireServer("Grab", { phase="start", cframe=grabCF })
+    -- Mögé teleport mielőtt grab-elünk
+    local behind = root.Position - root.CFrame.LookVector * CFG.BEHIND_OFFSET
+    behind = Vector3.new(behind.X, root.Position.Y, behind.Z)
+    hrp.CFrame = CFrame.lookAt(behind, root.Position)
+
+    task.wait(0.05)
+
+    if not npc.Parent or not LocalPlayer.Character then
+        st.grabbing = false ; return
+    end
+
+    Remotes.PerformAction:FireServer("Grab", {
+        phase  = "start",
+        cframe = CFrame.lookAt(hrp.Position, root.Position),
+    })
 
     task.delay(CFG.EXEC_HOLD, function()
         if LocalPlayer.Character == char then
-            Remotes.PerformAction:FireServer("Grab", { phase="stop" })
+            Remotes.PerformAction:FireServer("Grab", { phase = "stop" })
         end
-        st.executing = false
+        st.grabbing = false
     end)
-end
-
--- ┌──────────────────────────────────────────────────────────────┐
--- │  LISTENER KÖTÉSEK                                            │
--- │                                                              │
--- │  FIX (direct dmg bug): HP listener most NEM távolítja el    │
--- │  az NPC-t ha Health == 0 kliens oldalon.                    │
--- │  Csak a parentConn (szerver eltávolítja a modelt) és         │
--- │  a main loop cleanup() kezeli a valódi halált.              │
--- └──────────────────────────────────────────────────────────────┘
-local function bindListeners(char, hrp, npc, npcRoot, st)
-
-    -- Parent listener: szerver eltávolítja az NPC-t → ez a valódi halál
-    if not st.parentConn then
-        st.parentConn = npc.AncestryChanged:Connect(function(_, parent)
-            if parent == nil then
-                cleanupEntry(npc)
-            end
-        end)
-    end
-
-    -- HP listener: csak figyelünk, NEM töröljük ha HP == 0 kliens oldalon
-    -- (ez volt a direkt dmg bug oka)
-    if not st.hpConn then
-        local hum = npc:FindFirstChildOfClass("Humanoid")
-        if hum then
-            st.hpConn = hum.HealthChanged:Connect(function(hp)
-                -- NPC nincs már a workspace-ben → szerver már megölte
-                if not npc.Parent then return end
-                -- Exec threshold ellenőrzés (ÉLŐ NPC-n)
-                if hp > 0 and hp / hum.MaxHealth <= CFG.EXEC_THRESHOLD then
-                    local c = LocalPlayer.Character
-                    local h = c and c:FindFirstChild("HumanoidRootPart")
-                    if h and (npcRoot.Position - h.Position).Magnitude <= CFG.CHASE_RANGE then
-                        execGrab(c, h, npc, npcRoot, st)
-                    end
-                end
-            end)
-        end
-    end
-
-    -- FIX knockdown: ToggleRagdoll signal + main loop is ellenőrzi
-    if not st.kdConn then
-        st.kdConn = npc:GetAttributeChangedSignal("ToggleRagdoll"):Connect(function()
-            if not npc:GetAttribute("ToggleRagdoll") then return end
-            if not npc.Parent then return end
-            local c = LocalPlayer.Character
-            local h = c and c:FindFirstChild("HumanoidRootPart")
-            if not h then return end
-            if (npcRoot.Position - h.Position).Magnitude > CFG.CHASE_RANGE then return end
-            -- Rövid delay: freeze után grab
-            freezeTarget(npc)
-            task.delay(0.15, function()
-                if npc.Parent then
-                    execGrab(c, h, npc, npcRoot, st)
-                end
-            end)
-        end)
-    end
-
-    -- Knockback: elrepülés esetén refreeze + chase range
-    if not st.kbConn then
-        st.kbConn = npc:GetAttributeChangedSignal("HitByKnockBack"):Connect(function()
-            if npc:GetAttribute("HitByKnockBack") then
-                trackedTargets[npc] = true
-                task.delay(0.05, function()
-                    if npc.Parent then freezeTarget(npc) end
-                end)
-            end
-        end)
-    end
-end
-
--- ┌──────────────────────────────────────────────────────────────┐
--- │  TÜZELÉS                                                     │
--- └──────────────────────────────────────────────────────────────┘
-local function fireAll(char, hrp, targets)
-    for i, e in targets do
-        local st = npcState[e.npc]
-        if not st or st.executing then continue end
-        if not e.npc.Parent then continue end  -- szerver már eltávolította
-
-        local pkt = {
-            phase  = "start",
-            cframe = computeAttackCFrame(char, hrp, e.npc, e.root),
-        }
-
-        if i == 1 then
-            Remotes.PerformAction:FireServer("LightAttack", pkt)
-            if CFG.BEHIND_ON_ATTACK then
-                teleportBehind(hrp, e.root, true)
-            end
-        else
-            local d, n, r = (i-1) * CFG.BURST_DELAY, e.npc, e.root
-            task.delay(d, function()
-                if n.Parent and LocalPlayer.Character == char then
-                    Remotes.PerformAction:FireServer("LightAttack", {
-                        phase  = "start",
-                        cframe = computeAttackCFrame(char, hrp, n, r),
-                    })
-                end
-            end)
-        end
-    end
-    syncCombo(char)
 end
 
 -- ┌──────────────────────────────────────────────────────────────┐
@@ -574,18 +403,17 @@ end
 local attrConn = nil
 
 local function setupChar(char)
-    -- Mindent letakarítunk
-    for model in npcState do cleanupEntry(model) end
-    for model in frozenTargets do unfreezeTarget(model) end
-    npcState       = {}
-    trackedTargets = {}
-    posState       = { underground=false, surfaceY=nil, lastBehind=0 }
-    currentLockTarget = nil
+    for npc in frozen do unfreezeNPC(npc) end
+    frozen     = {}
+    tracked    = {}
+    execState  = {}
+    posState   = { underground=false, surfaceY=nil, lastBehind=0 }
+    currentLock = nil
 
     if attrConn then attrConn:Disconnect() end
     attrConn = char.AttributeChanged:Connect(function()
         if not char:GetAttribute("Grabbing") then
-            for _, st in npcState do st.executing = false end
+            for _, st in execState do st.grabbing = false end
         end
     end)
 end
@@ -596,7 +424,6 @@ end
 local cleanTimer = 0
 
 RunService.Heartbeat:Connect(function(dt)
-    -- Fő kapcsoló
     if not CFG.ENABLED then return end
 
     local char = LocalPlayer.Character
@@ -608,7 +435,7 @@ RunService.Heartbeat:Connect(function(dt)
 
     forceFlush(char)
 
-    -- Underground kezelés
+    -- Underground (csak ha mi vagyunk incapacitated)
     if shouldGoUnderground(char) then
         if not posState.underground then goUnderground(hrp) end
         maintainUnderground(hrp)
@@ -617,69 +444,108 @@ RunService.Heartbeat:Connect(function(dt)
         returnToSurface(hrp)
     end
 
-    -- Cleanup (3 mp-enként)
+    -- Cleanup halott NPC state-ek
     cleanTimer += dt
-    if cleanTimer >= 3 then cleanTimer = 0 ; cleanup() end
+    if cleanTimer >= 3 then
+        cleanTimer = 0
+        for npc in execState do
+            if not npc.Parent then
+                execState[npc] = nil
+                tracked[npc]   = nil
+                unfreezeNPC(npc)
+                if currentLock == npc then clearLockOn() end
+            end
+        end
+        for npc in frozen do
+            if not npc.Parent then unfreezeNPC(npc) end
+        end
+    end
 
     if not canFire(char) then return end
 
-    local targets = getTargetsInRange(hrp)
+    local targets = getTargets(hrp)
     if #targets == 0 then
-        if currentLockTarget then clearLockOn() end
+        if currentLock then clearLockOn() end
         return
     end
     if #targets > CFG.MAX_TARGETS then
         local t = {} ; for i=1,CFG.MAX_TARGETS do t[i]=targets[i] end ; targets=t
     end
 
-    -- Lock-on elsődleges célpont
+    -- Lock-on elsődleges célpontra
     setLockOn(targets[1].npc)
+
+    -- Attack/execute listák szétválasztva
+    local toAttack  = {}
+    local toExecute = {}
 
     for _, e in targets do
         if not e.npc.Parent then continue end
-        local st = ensureState(e.npc)
+        local phase = getNPCPhase(e.npc, e.hum)
 
-        -- Listener-ek kötése
-        bindListeners(char, hrp, e.npc, e.root, st)
+        if phase == "dead" then
+            -- Szerver eltávolította → cleanup
+            execState[e.npc] = nil
+            tracked[e.npc]   = nil
+            unfreezeNPC(e.npc)
+            if currentLock == e.npc then clearLockOn() end
 
-        -- Freeze
-        if CFG.FREEZE_ENABLED then
-            freezeTarget(e.npc)
-        end
+        elseif phase == "execute" then
+            -- Knockolt / low hp → execute listába
+            table.insert(toExecute, e)
+            freezeNPC(e.npc)
 
-        -- Chase ha messzebb repült
-        if e.dist > CFG.RANGE then
-            chaseTarget(hrp, e.root)
-        end
-
-        -- FIX knockdown exec: main loop-ban is ellenőrizzük
-        -- (ne csak a signal-re hagyatkozzunk)
-        if not st.executing then
-            local isDowned  = ActionState.isDowned(e.npc)   -- ToggleRagdoll
-            local hpLow     = e.hum.Health / math.max(e.hum.MaxHealth, 1) <= CFG.EXEC_THRESHOLD
-            if isDowned or hpLow then
-                execGrab(char, hrp, e.npc, e.root, st)
-            end
+        else -- "attack"
+            table.insert(toAttack, e)
+            freezeNPC(e.npc)
         end
     end
 
-    -- Mögé teleport (rate-limited)
-    teleportBehind(hrp, targets[1].root, false)
+    -- ── EXECUTE fázis ──────────────────────────────────────────
+    -- Az execute-ot az attack ELŐTT kezeljük, hogy ne küldjünk
+    -- LightAttack-et knockolt NPC-re
+    for _, e in toExecute do
+        tryExec(char, hrp, e.npc, e.root)
+    end
 
-    -- Tüzelés
-    fireAll(char, hrp, targets)
+    -- ── ATTACK fázis ───────────────────────────────────────────
+    if #toAttack > 0 then
+        -- Mögé teleport az elsőhöz
+        teleportBehind(hrp, toAttack[1].root)
+
+        for i, e in toAttack do
+            local st = execState[e.npc]
+            -- Ne támadj ha éppen grab folyamatban van erre az NPC-re
+            if st and st.grabbing then continue end
+
+            local pkt = {
+                phase  = "start",
+                cframe = computeCF(char, hrp, e.npc, e.root),
+            }
+            if i == 1 then
+                Remotes.PerformAction:FireServer("LightAttack", pkt)
+            else
+                local d, n, r = (i-1)*CFG.BURST_DELAY, e.npc, e.root
+                task.delay(d, function()
+                    if n.Parent and LocalPlayer.Character == char then
+                        Remotes.PerformAction:FireServer("LightAttack", {
+                            phase  = "start",
+                            cframe = computeCF(char, hrp, n, r),
+                        })
+                    end
+                end)
+            end
+        end
+        syncCombo(char)
+    end
 end)
 
--- ┌──────────────────────────────────────────────────────────────┐
--- │  KARAKTER EVENTS                                             │
--- └──────────────────────────────────────────────────────────────┘
 LocalPlayer.CharacterAdded:Connect(setupChar)
 LocalPlayer.CharacterRemoving:Connect(function()
-    for model in npcState do cleanupEntry(model) end
-    for model in frozenTargets do unfreezeTarget(model) end
-    npcState = {} ; trackedTargets = {}
+    for npc in frozen do unfreezeNPC(npc) end
+    frozen = {} ; tracked = {} ; execState = {}
     if attrConn then attrConn:Disconnect() ; attrConn = nil end
 end)
 
 if LocalPlayer.Character then setupChar(LocalPlayer.Character) end
-print("[KillAura v8] Betöltve | _G.KillAuraCFG.ENABLED = true")
+print("[KillAura v9] Betöltve | _G.KillAuraCFG.ENABLED")
