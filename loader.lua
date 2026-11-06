@@ -1,9 +1,10 @@
 -- ═══════════════════════════════════════════════════════════════
--- Domka modz - Master Loader
+-- Domka modz - Master Loader (GitHub Sync)
 -- ═══════════════════════════════════════════════════════════════
 
 local repoBase = "https://raw.githubusercontent.com/Dayooka/domka-modz/refs/heads/main/"
 
+-- KillAura globális konfiguráció
 _G.KillAuraCFG = {
     ENABLED               = true,
     RANGE                 = 24,
@@ -22,27 +23,20 @@ _G.KillAuraCFG = {
     UNDERGROUND_DEPTH     = 10,
     UNDERGROUND_ENABLED   = true,
     FREEZE_ENABLED        = true,
-
-    AUTO_BLOCK_ENABLED    = false,
-    AUTO_VANISH_ENABLED   = false,
-    AUTO_DB_ENABLED       = false,
-    AUTO_LOOT_ENABLED     = false,
-    AUTO_SENZU_ENABLED    = false,
-    AUTO_DAILY_ENABLED    = false,
-    AUTO_NPC_FARM_ENABLED = false,
 }
 
+-- Pontosan a képen látható fájlnevek sorrendben:
 local modulesToLoad = {
     "_Config.lua",
     "_Shared.lua",
     "combat.lua",
-    "01_AutoBlockParry.lua",
-    "02_AutoVanish.lua",
-    "03_AutoDragonBall.lua",
-    "04_AutoLoot.lua",
-    "05_AutoSenzu.lua",
-    "06_AutoDaily.lua",
-    "07_AutoNPCFarm.lua",
+    "autoblock.lua",
+    "autovanish.lua",
+    "autodb.lua",
+    "autoload.lua",
+    "autosenzu.lua",
+    "autodaily.lua",
+    "npcfarm.lua",
     "gui.lua",
 }
 
@@ -59,4 +53,4 @@ for _, fileName in ipairs(modulesToLoad) do
     end
 end
 
-print("[DOMKA MODZ] Rendszer elindult!")
+print("[DOMKA MODZ] Teljes rendszer aktív!")
