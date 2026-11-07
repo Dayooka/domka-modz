@@ -1,10 +1,5 @@
--- ═══════════════════════════════════════════════════════════════
--- Domka modz - Master Loader (GitHub Sync)
--- ═══════════════════════════════════════════════════════════════
-
 local repoBase = "https://raw.githubusercontent.com/Dayooka/domka-modz/refs/heads/main/"
 
--- KillAura globális konfiguráció
 _G.KillAuraCFG = {
     ENABLED               = true,
     RANGE                 = 24,
@@ -23,9 +18,24 @@ _G.KillAuraCFG = {
     UNDERGROUND_DEPTH     = 10,
     UNDERGROUND_ENABLED   = true,
     FREEZE_ENABLED        = true,
+
+    AUTO_BLOCK_ENABLED    = true,
+    AUTO_VANISH_ENABLED   = true,
+    AUTO_DB_ENABLED       = false,
+    AUTO_LOOT_ENABLED     = true,
+    AUTO_SENZU_ENABLED    = false,
+    AUTO_DAILY_ENABLED    = false,
+    AUTO_NPC_FARM_ENABLED = false,
 }
 
--- Pontosan a képen látható fájlnevek sorrendben:
+_G._AIO_Modules = {}
+
+-- Betöltési sorrend:
+-- 1. _Config + _Shared (ezektől függenek a többiek)
+-- 2. combat (KillAura)
+-- 3. AIO modulok
+-- 4. npcfarm
+-- 5. gui (utoljára, mikor minden modul már fut)
 local modulesToLoad = {
     "_Config.lua",
     "_Shared.lua",
@@ -33,24 +43,34 @@ local modulesToLoad = {
     "autoblock.lua",
     "autovanish.lua",
     "autodb.lua",
-    "autoload.lua",
+    "autoloot.lua",
     "autosenzu.lua",
     "autodaily.lua",
     "npcfarm.lua",
+    "gym.lua",
     "gui.lua",
 }
 
-print("[DOMKA MODZ] Modulok inicializálása...")
+print("[DOMKA MODZ] Modulok inicializalasa...")
 
 for _, fileName in ipairs(modulesToLoad) do
-    local success, err = pcall(function()
-        return loadstring(game:HttpGet(repoBase .. fileName))()
+    local ok, err = pcall(function()
+        local src = game:HttpGet(repoBase .. fileName)
+        if not src or src == "" then
+            error("Ures valasz / nem talalhato")
+        end
+        local fn, loadErr = loadstring(src)
+        if not fn then
+            error("loadstring hiba: " .. tostring(loadErr))
+        end
+        fn()
     end)
-    if not success then
-        warn("[DOMKA MODZ] Hiba a(z) " .. fileName .. " betöltésekor: ", err)
+    if not ok then
+        warn("[DOMKA MODZ] Hiba: " .. fileName .. " -> " .. tostring(err))
     else
-        print("[DOMKA MODZ] Sikeresen betöltve: " .. fileName)
+        print("[DOMKA MODZ] OK: " .. fileName)
     end
+    task.wait(0.05)
 end
 
-print("[DOMKA MODZ] Teljes rendszer aktív!")
+print("[DOMKA MODZ] Rendszer elindult!")
