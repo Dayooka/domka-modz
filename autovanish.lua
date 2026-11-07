@@ -1,10 +1,3 @@
---[[
-    02_AutoVanish  –  LocalScript
-    Elhelyezés: StarterPlayerScripts > AIOScripts
-    Config:  _Config.get("Vanish", key)
-    Státusz: require(this).getStats()
-]]
-
 local Cfg    = (_G._AIO_Config)
 local Shared = (_G._AIO_Shared)
 local RS     = game:GetService("ReplicatedStorage")
