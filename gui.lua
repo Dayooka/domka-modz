@@ -90,6 +90,24 @@ listPad.PaddingBottom = UDim.new(0, 4)
 
 -- Kartya definiciok
 local CARD_DEFS = {
+    -- ── Gym Automation ────────────────────────────────────────
+    {
+        cfgKey  = "Gym",
+        label   = "Gym Automation",
+        color   = Color3.fromRGB(255, 207, 90),
+        modKey  = "Gym",
+        statFn  = function(stats)
+            return stats.station .. " | " .. stats.status
+                .. " | P:" .. (stats.perfect or 0)
+                .. " G:" .. (stats.good or 0)
+                .. " S:" .. (stats.sloppy or 0)
+                .. " Miss:" .. (stats.missed or 0)
+        end,
+        extras = {},
+        sliders = {
+            { label="Offset", cfgKey="Gym", key="TIMING_OFFSET_SECONDS", min=-0.1, max=0.1, step=0.005 },
+        },
+    },
     -- ── KillAura ──────────────────────────────────────────────
     {
         cfgKey  = "KillAura",
