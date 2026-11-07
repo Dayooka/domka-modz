@@ -61,10 +61,23 @@ _G.KillAuraCFG = setmetatable({}, {
 })
 
 -- ── MODULE POISONING ───────────────────────────────────────────
+-- FONTOS: csak a támadó actionök blockedBy-ját töröljük!
+-- A Block, Vanish, SideStep blockedBy listáját MEGŐRIZZÜK,
+-- különben az autoblock/autovanish scriptek nem tudnak küldeni.
+local _savedBlock   = ActionConfig.Block   and ActionConfig.Block.blockedBy
+local _savedVanish  = ActionConfig.Vanish  and ActionConfig.Vanish.blockedBy
+local _savedStep    = ActionConfig.SideStep and ActionConfig.SideStep.blockedBy
+
 local function poisonModules()
     if ActionConfig.LightAttack then ActionConfig.LightAttack.blockedBy = {} end
     if ActionConfig.HeavyAttack then ActionConfig.HeavyAttack.blockedBy = {} end
     if ActionConfig.Grab        then ActionConfig.Grab.blockedBy        = {} end
+
+    -- Block/Vanish/SideStep visszaállítása ha a poison törölt volna valamit
+    if _savedBlock  and ActionConfig.Block   then ActionConfig.Block.blockedBy   = _savedBlock  end
+    if _savedVanish and ActionConfig.Vanish  then ActionConfig.Vanish.blockedBy  = _savedVanish end
+    if _savedStep   and ActionConfig.SideStep then ActionConfig.SideStep.blockedBy = _savedStep end
+
     CombatPublic.meleeApproachStop = function() return 0.1 end
     CombatPublic.meleeLungeTravel  = function(dist) return dist - 0.1 end
     print("[POISON] OK")
@@ -92,31 +105,53 @@ local hookedRE = Remotes.PerformAction
 local bypass   = false
 local oldNC
 
+-- Ezek az actionök mindig átmennek a hookban – sosem blokkoljuk őket
+local PASSTHROUGH = {
+    Block    = true,
+    Vanish   = true,
+    SideStep = true,
+    Grab     = true,   -- execut engedjük, csak sokszorozást tiltjuk
+}
+
 oldNC = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local m    = getnamecallmethod()
     local char = LocalPlayer.Character
 
+    -- Attribute spoofing (AttackCooldown stb.)
     if m == "GetAttribute" and char and self == char then
         if SPOOF[select(1,...)] then return nil end
     end
     if m == "SetAttribute" and char and self == char then
         if SPOOF[select(1,...)] then return end
     end
-    if m == "FireServer" and self == hookedRE and not bypass then
-        local action, params = select(1,...), select(2,...)
-        if action == "LightAttack" and type(params) == "table" then
-            local p = params
-            local mult     = CFG("MULTIPLY")
-            local multDel  = CFG("MULT_DELAY")
-            for i = 1, mult do
-                task.delay(i * multDel, function()
-                    bypass = true
-                    pcall(function() hookedRE:FireServer(action, p) end)
-                    bypass = false
-                end)
+
+    -- FireServer hook
+    if m == "FireServer" and self == hookedRE then
+        local action = select(1, ...)
+
+        -- Block/Vanish/SideStep: MINDIG átengedjük, bypass-tól függetlenül
+        if PASSTHROUGH[action] then
+            return oldNC(self, ...)
+        end
+
+        -- LightAttack sokszorozás (csak ha nem bypass)
+        if not bypass and action == "LightAttack" then
+            local params = select(2, ...)
+            if type(params) == "table" then
+                local p       = params
+                local mult    = CFG("MULTIPLY")
+                local multDel = CFG("MULT_DELAY")
+                for i = 1, mult do
+                    task.delay(i * multDel, function()
+                        bypass = true
+                        pcall(function() hookedRE:FireServer(action, p) end)
+                        bypass = false
+                    end)
+                end
             end
         end
     end
+
     return oldNC(self, ...)
 end))
 
