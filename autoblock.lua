@@ -1,10 +1,3 @@
---[[
-    01_AutoBlockParry  –  LocalScript
-    Elhelyezés: StarterPlayerScripts > AIOScripts
-    Config:  _Config.get("BlockParry", key)
-    Státusz: require(this).getStats()
-]]
-
 local Cfg    = (_G._AIO_Config)
 local Shared = (_G._AIO_Shared)
 local RS     = game:GetService("ReplicatedStorage")
