@@ -1,9 +1,3 @@
---[[
-    03_AutoDragonBall  -  ModuleScript
-    Config:  _Config.get("DragonBall", key)
-    Statusz: require(this).getStats()
-]]
-
 local Cfg    = (_G._AIO_Config)
 local Shared = (_G._AIO_Shared)
 
