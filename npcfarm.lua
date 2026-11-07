@@ -1,9 +1,3 @@
---[[
-    07_AutoNPCFarm  -  ModuleScript
-    Config:  _Config.get("NPCFarm", key)
-    Statusz: require(this).getStats()
-]]
-
 local Cfg     = (_G._AIO_Config)
 local Shared  = (_G._AIO_Shared)
 local CS      = game:GetService("CollectionService")
