@@ -2,7 +2,8 @@ local Cfg    = (_G._AIO_Config)
 local Shared = (_G._AIO_Shared)
 local CS     = game:GetService("CollectionService")
 
-local gatherMote = Shared.getRemoteByName("GatherMote")
+-- Nil-safe: Shared esetleg még nem töltődött be teljesen
+local gatherMote = Shared and Shared.getRemoteByName and Shared.getRemoteByName("GatherMote") or nil
 local S = { found = 0, collected = 0, status = "Idle" }
 
 local ITEM_KW = {
