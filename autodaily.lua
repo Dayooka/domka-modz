@@ -1,9 +1,3 @@
---[[
-    06_AutoDaily  -  ModuleScript
-    Config:  _Config.get("Daily", key)
-    Statusz: require(this).getStats()
-]]
-
 local Cfg    = (_G._AIO_Config)
 local Shared = (_G._AIO_Shared)
 
