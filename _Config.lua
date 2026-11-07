@@ -1,3 +1,27 @@
+--[[
+╔══════════════════════════════════════════════════════════════════════╗
+║  _Config  –  ModuleScript                                           ║
+║  Elhelyezés: StarterPlayerScripts > AIOScripts > _Config            ║
+║                                                                      ║
+║  GUI-ból így használd:                                               ║
+║    local Cfg = require(script.Parent._Config)                       ║
+║                                                                      ║
+║  Ki/bekapcsolás:                                                     ║
+║    Cfg.set("BlockParry","enabled", true)                            ║
+║    Cfg.toggle("Vanish")                                              ║
+║                                                                      ║
+║  Érték olvasás:                                                      ║
+║    Cfg.get("BlockParry","BLOCK_HOLD")  → 0.55                       ║
+║    Cfg.get("Vanish","enabled")         → true/false                 ║
+║                                                                      ║
+║  Változás figyelése:                                                 ║
+║    Cfg.onChange(function(module, key, value) ... end)               ║
+║                                                                      ║
+║  Összes állapot:                                                     ║
+║    Cfg.getAll()  →  { BlockParry={enabled=true,...}, ... }          ║
+╚══════════════════════════════════════════════════════════════════════╝
+]]
+
 local Config = {}
 
 -- ══════════════════════════════════════════
@@ -77,6 +101,14 @@ end
 -- ALAPÉRTELMEZETT ÉRTÉKEK
 -- ══════════════════════════════════════════
 local defaults = {
+
+    Gym = {
+        enabled               = true,
+        TIMING_OFFSET_SECONDS = 0,       -- Timing eltolás (s) – negatív = korábban küld
+        SOLVER_ITERATIONS     = 48,      -- Bisection pontosság
+        HEARTBEAT_THRESHOLD   = 0.06,    -- Heartbeat váltás küszöb (s)
+        MAX_LATE_SECONDS      = 0.02,    -- Max késés ami még elfogadott
+    },
 
     KillAura = {
         enabled           = true,    -- _G.KillAuraCFG.ENABLED
