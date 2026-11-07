@@ -1,3 +1,7 @@
+-- ═══════════════════════════════════════════════════════════════
+-- Domka Modz - Master Loader
+-- ═══════════════════════════════════════════════════════════════
+
 local repoBase = "https://raw.githubusercontent.com/Dayooka/domka-modz/refs/heads/main/"
 
 _G.KillAuraCFG = {
@@ -55,7 +59,9 @@ print("[DOMKA MODZ] Modulok inicializalasa...")
 
 for _, fileName in ipairs(modulesToLoad) do
     local ok, err = pcall(function()
-        local src = game:HttpGet(repoBase .. fileName)
+        -- Cache-bust: timestamp hozzáadása hogy mindig friss verziót kapjon
+        local url = repoBase .. fileName .. "?t=" .. tostring(os.time())
+        local src = game:HttpGet(url)
         if not src or src == "" then
             error("Ures valasz / nem talalhato")
         end
