@@ -1,7 +1,3 @@
--- ═══════════════════════════════════════════════════════════════
--- combat.lua - KillAura v9
--- Config: _G._AIO_Config.get("KillAura", key)
--- ═══════════════════════════════════════════════════════════════
 local Players           = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -152,19 +148,29 @@ oldNC = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             return oldNC(self, ...)
         end
 
-        -- LightAttack sokszorozás (csak ha nem bypass)
-        if not bypass and action == "LightAttack" then
+        -- LightAttack / HeavyAttack sokszorozás (csak ha nem bypass)
+        if not bypass then
             local params = select(2, ...)
             if type(params) == "table" then
-                local p       = params
-                local mult    = CFG("MULTIPLY")
-                local multDel = CFG("MULT_DELAY")
-                for i = 1, mult do
-                    task.delay(i * multDel, function()
-                        bypass = true
-                        pcall(function() hookedRE:FireServer(action, p) end)
-                        bypass = false
-                    end)
+                local mult, multDel
+
+                if action == "LightAttack" then
+                    mult    = CFG("LIGHT_MULTIPLY") or 2
+                    multDel = CFG("MULT_DELAY")     or 0.006
+                elseif action == "HeavyAttack" then
+                    mult    = CFG("HEAVY_MULTIPLY") or 1
+                    multDel = CFG("MULT_DELAY")     or 0.006
+                end
+
+                if mult and mult > 1 then
+                    local p = params
+                    for i = 1, mult do
+                        task.delay(i * multDel, function()
+                            bypass = true
+                            pcall(function() hookedRE:FireServer(action, p) end)
+                            bypass = false
+                        end)
+                    end
                 end
             end
         end
@@ -545,37 +551,120 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    for _, e in toExecute do
-        tryExec(char, hrp, e.npc, e.root)
+    -- ── Execute fázis ─────────────────────────────────────────
+    if CFG("EXEC_ENABLED") then
+        for _, e in toExecute do
+            tryExec(char, hrp, e.npc, e.root)
+        end
     end
 
-    if #toAttack > 0 then
+    -- ── Attack fázis ──────────────────────────────────────────
+    if #toAttack == 0 then return end
+
+    local mode       = CFG("ATTACK_MODE")     or "mixed"
+    local burstDelay = CFG("BURST_DELAY")     or 0.004
+    local atkDelay   = CFG("ATTACK_DELAY")    or 0.0
+    local lightMult  = CFG("LIGHT_MULTIPLY")  or 2
+    local multDelay  = CFG("MULT_DELAY")      or 0.006
+    local heavyMult  = CFG("HEAVY_MULTIPLY")  or 1
+    local heavyHold  = CFG("HEAVY_HOLD")      or 0.22
+    local lightCount = CFG("LIGHT_COUNT")     or 4
+
+    -- Teleport mögé az első célponthoz
+    if CFG("TELEPORT_ENABLED") then
         teleportBehind(hrp, toAttack[1].root)
-        local burstDelay = CFG("BURST_DELAY")
-        for i, e in toAttack do
-            local st = execState[e.npc]
-            if not (st and st.grabbing) then
-                local pkt = {
-                    phase  = "start",
-                    cframe = computeCF(char, hrp, e.npc, e.root),
-                }
+    end
+
+    -- ── Segédfüggvények ──────────────────────────────────────
+    local function sendLight(target, delayOffset)
+        local n, r = target.npc, target.root
+        local function doSend()
+            if not n.Parent or LocalPlayer.Character ~= char then return end
+            local pkt = {
+                phase  = "start",
+                cframe = computeCF(char, hrp, n, r),
+            }
+            -- Szerver-oldali sokszorozás (hook kezeli)
+            Remotes.PerformAction:FireServer("LightAttack", pkt)
+        end
+        if delayOffset and delayOffset > 0 then
+            task.delay(delayOffset, doSend)
+        else
+            doSend()
+        end
+    end
+
+    local function sendHeavy(target, delayOffset)
+        local n, r = target.npc, target.root
+        local function doSend()
+            if not n.Parent or LocalPlayer.Character ~= char then return end
+            local pkt = {
+                phase  = "start",
+                cframe = computeCF(char, hrp, n, r),
+            }
+            Remotes.PerformAction:FireServer("HeavyAttack", pkt)
+            task.delay(heavyHold, function()
+                if LocalPlayer.Character == char then
+                    Remotes.PerformAction:FireServer("HeavyAttack", { phase = "stop" })
+                end
+            end)
+        end
+        if delayOffset and delayOffset > 0 then
+            task.delay(delayOffset, doSend)
+        else
+            doSend()
+        end
+    end
+
+    -- ── Combo végrehajtás mód alapján ────────────────────────
+    for i, e in toAttack do
+        local st = execState[e.npc]
+        if st and st.grabbing then
+            -- Skip – grab folyamatban van erre az NPC-re
+        else
+            local baseDelay = (i - 1) * burstDelay + atkDelay
+
+            if mode == "light" then
+                -- Csak Light
+                sendLight(e, baseDelay)
+
+            elseif mode == "heavy" then
+                -- Csak Heavy
+                sendHeavy(e, baseDelay)
+
+            elseif mode == "grab" then
+                -- Csak Grab (execute)
+                task.delay(baseDelay, function()
+                    if e.npc.Parent and LocalPlayer.Character == char then
+                        tryExec(char, hrp, e.npc, e.root)
+                    end
+                end)
+
+            else
+                -- mixed: LLLL + M combo (csak első célpontra)
                 if i == 1 then
-                    Remotes.PerformAction:FireServer("LightAttack", pkt)
-                else
-                    local d, n, r = (i-1)*burstDelay, e.npc, e.root
-                    task.delay(d, function()
-                        if n.Parent and LocalPlayer.Character == char then
-                            Remotes.PerformAction:FireServer("LightAttack", {
-                                phase  = "start",
-                                cframe = computeCF(char, hrp, n, r),
-                            })
+                    task.spawn(function()
+                        -- Light sorozat
+                        for j = 1, lightCount do
+                            if not e.npc.Parent or LocalPlayer.Character ~= char then break end
+                            if not canFire(char) then break end
+                            sendLight(e, 0)
+                            task.wait(0.08 + atkDelay)
+                        end
+                        -- Heavy finisher
+                        if e.npc.Parent and LocalPlayer.Character == char and canFire(char) then
+                            sendHeavy(e, 0)
                         end
                     end)
+                else
+                    -- Többi célpont: Light burst
+                    sendLight(e, baseDelay)
                 end
             end
         end
-        syncCombo(char)
     end
+
+    syncCombo(char)
 end)
 
 LocalPlayer.CharacterAdded:Connect(setupChar)
