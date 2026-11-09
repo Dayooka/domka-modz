@@ -103,7 +103,7 @@ end
 local defaults = {
 
     Gym = {
-        enabled               = true,
+        enabled               = false,
         TIMING_OFFSET_SECONDS = 0,       -- Timing eltolás (s) – negatív = korábban küld
         SOLVER_ITERATIONS     = 48,      -- Bisection pontosság
         HEARTBEAT_THRESHOLD   = 0.06,    -- Heartbeat váltás küszöb (s)
@@ -111,7 +111,7 @@ local defaults = {
     },
 
     KillAura = {
-        enabled           = true,
+        enabled           = false,
 
         -- ── Támadás mód ─────────────────────────────────────────
         -- "light"  = csak LightAttack
@@ -175,7 +175,7 @@ local defaults = {
     },
 
     Vanish = {
-        enabled           = true,
+        enabled           = false,
         VANISH_DELAY      = 0.04,
         VANISH_COOLDOWN   = 0.46,
         KI_VANISH         = 0.20,
@@ -193,7 +193,7 @@ local defaults = {
     },
 
     DragonBall = {
-        enabled           = true,
+        enabled           = false,
         TP_OFFSET_Y       = 3,
         TP_DELAY          = 0.30,
         MAX_RETRIES       = 4,
@@ -212,7 +212,7 @@ local defaults = {
     },
 
     Loot = {
-        enabled           = true,
+        enabled           = false,
         TP_OFFSET_Y       = 3,
         TP_DELAY          = 0.22,
         SCAN_INTERVAL     = 1.0,
@@ -221,7 +221,7 @@ local defaults = {
     },
 
     Senzu = {
-        enabled           = true,
+        enabled           = false,
         CALL_DELAY        = 0.55,
         CHECK_INTERVAL    = 25,
         AUTO_REPLANT      = true,
@@ -230,7 +230,7 @@ local defaults = {
     },
 
     Daily = {
-        enabled           = true,
+        enabled           = false,
         CALL_DELAY        = 0.70,
         MAX_RETRIES       = 3,
         SPIN_MAX          = 7,
@@ -240,14 +240,14 @@ local defaults = {
     },
 
     NPCFarm = {
-        enabled           = true,
+        enabled           = false,
         LIGHT_COUNT       = 4,
-        HEAVY_AFTER_LIGHT = true,
-        GRAB_ENABLED      = true,
+        HEAVY_AFTER_LIGHT = false,
+        GRAB_ENABLED      = false,
         GRAB_HOLD         = 0.32,
         ATTACK_CD         = 0.18,
         COMBO_DELAY       = 0.22,
-        TELEPORT_TO_NPC   = true,
+        TELEPORT_TO_NPC   = false,
         TP_OFFSET         = Vector3.new(0,1,2),
         SCAN_RANGE        = 150,
         LOOP_DELAY        = 0.5,
