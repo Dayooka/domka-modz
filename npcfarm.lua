@@ -1,3 +1,9 @@
+--[[
+    07_AutoNPCFarm  -  ModuleScript
+    Config:  _Config.get("NPCFarm", key)
+    Statusz: require(this).getStats()
+]]
+
 local Cfg     = (_G._AIO_Config)
 local Shared  = (_G._AIO_Shared)
 local CS      = game:GetService("CollectionService")
@@ -112,6 +118,24 @@ local function doCombo(target)
     end
 end
 
+-- Karakter lehet-e NPC farmot futtatni most?
+-- Forrás alapján HARD_CC tagja: InGym, Stunned, HitByKnockback,
+-- ToggleRagdoll, Casting, Channeling, DRILLING, stb.
+local AS = Shared.getActionState()
+local function canFarmNow()
+    local c = Shared.getChar()
+    if not c then return false end
+    -- InGym: edzőteremben van – HARD_CC, nem támadhat
+    if c:GetAttribute("InGym")        then return false end
+    -- Alap ActionState ellenőrzések
+    if AS and AS.isDowned(c)          then return false end
+    if AS and AS.isChanneling(c)      then return false end
+    if AS and AS.isIncapacitated(c)   then return false end
+    -- Defense aktív (autoblock/autovanish fut)
+    if _G._AIO_DefenseActive          then return false end
+    return true
+end
+
 task.spawn(function()
     task.wait(2)
     while true do
@@ -121,6 +145,15 @@ task.spawn(function()
             S.target = "-"
             S.combo  = "-"
             task.wait(1)
+        elseif not canFarmNow() then
+            -- InGym vagy más HARD_CC – várunk
+            local c = Shared.getChar()
+            if c and c:GetAttribute("InGym") then
+                S.status = "Edzoteremben – szunetel"
+            else
+                S.status = "Varakozas (CC)..."
+            end
+            task.wait(0.5)
         else
             local npcs = getNPCs()
             if #npcs == 0 then
@@ -134,6 +167,7 @@ task.spawn(function()
 
                 for _ = 1, 20 do
                     if not Cfg.get("NPCFarm","enabled") then break end
+                    if not canFarmNow() then break end
                     if not target.npc.Parent or target.hum.Health <= 0 then break end
                     if Shared.canAttack() then
                         doCombo(target)
