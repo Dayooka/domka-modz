@@ -1,3 +1,7 @@
+-- ═══════════════════════════════════════════════════════════════
+-- combat.lua - KillAura v9
+-- Config: _G._AIO_Config.get("KillAura", key)
+-- ═══════════════════════════════════════════════════════════════
 local Players           = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -61,22 +65,36 @@ _G.KillAuraCFG = setmetatable({}, {
 })
 
 -- ── MODULE POISONING ───────────────────────────────────────────
--- FONTOS: csak a támadó actionök blockedBy-ját töröljük!
--- A Block, Vanish, SideStep blockedBy listáját MEGŐRIZZÜK,
--- különben az autoblock/autovanish scriptek nem tudnak küldeni.
-local _savedBlock   = ActionConfig.Block   and ActionConfig.Block.blockedBy
-local _savedVanish  = ActionConfig.Vanish  and ActionConfig.Vanish.blockedBy
-local _savedStep    = ActionConfig.SideStep and ActionConfig.SideStep.blockedBy
+--[[
+    Csak az AttackCooldown, Swinging, HeavyCooldown elemeket
+    vesszük ki a blockedBy listákból – a Blocking, Vanishing,
+    SideStepping benne marad, különben a szerver visszautasítja
+    a Block/Vanish küldést "tamadasban van" alapon.
+]]
+local REMOVE_FROM_BLOCKED = {
+    AttackCooldown = true,
+    Swinging       = true,
+    HeavyCooldown  = true,
+}
+
+local function filterBlockedBy(action)
+    if not ActionConfig[action] then return end
+    local original = ActionConfig[action].blockedBy
+    if type(original) ~= "table" then return end
+    local filtered = {}
+    for _, v in ipairs(original) do
+        if not REMOVE_FROM_BLOCKED[v] then
+            table.insert(filtered, v)
+        end
+    end
+    ActionConfig[action].blockedBy = filtered
+end
 
 local function poisonModules()
-    if ActionConfig.LightAttack then ActionConfig.LightAttack.blockedBy = {} end
-    if ActionConfig.HeavyAttack then ActionConfig.HeavyAttack.blockedBy = {} end
-    if ActionConfig.Grab        then ActionConfig.Grab.blockedBy        = {} end
-
-    -- Block/Vanish/SideStep visszaállítása ha a poison törölt volna valamit
-    if _savedBlock  and ActionConfig.Block   then ActionConfig.Block.blockedBy   = _savedBlock  end
-    if _savedVanish and ActionConfig.Vanish  then ActionConfig.Vanish.blockedBy  = _savedVanish end
-    if _savedStep   and ActionConfig.SideStep then ActionConfig.SideStep.blockedBy = _savedStep end
+    filterBlockedBy("LightAttack")
+    filterBlockedBy("HeavyAttack")
+    filterBlockedBy("Grab")
+    -- Block, Vanish, SideStep NEM érintett – maradnak érintetlenül
 
     CombatPublic.meleeApproachStop = function() return 0.1 end
     CombatPublic.meleeLungeTravel  = function(dist) return dist - 0.1 end
@@ -266,9 +284,34 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ── VALIDÁCIÓ ──────────────────────────────────────────────────
+_G._AIO_DefenseActive = _G._AIO_DefenseActive or false
+
 local function canFire(char)
-    if ActionState.isDowned(char)     then return false end
-    if ActionState.isChanneling(char) then return false end
+    -- Alapvető ActionState ellenőrzések
+    if ActionState.isDowned(char)        then return false end
+    if ActionState.isChanneling(char)    then return false end
+    if ActionState.isIncapacitated(char) then return false end
+
+    -- _AIO_DefenseActive: autoblock/autovanish állítja
+    if _G._AIO_DefenseActive then return false end
+
+    -- Pontos attribútum nevek a forrásból (ActionState konstansok):
+    -- SIDE_STEPPING_ATTR = "SideStepping"
+    -- STEP_IFRAME_ATTR   = "StepIFrameUntil"
+    -- PIN_ATTR           = "PinnedUntil"
+
+    -- Blocking: szerver állítja ha block el lett fogadva
+    if char:GetAttribute("Blocking") then return false end
+
+    -- SideStepping: SIDE_STEPPING_ATTR
+    if char:GetAttribute("SideStepping") then return false end
+
+    -- StepIFrameUntil: inStepIFrames ellenőrzés
+    if ActionState.inStepIFrames(char) then return false end
+
+    -- InGym: ha edzőteremben van, nem támadható/mozoghat (HARD_CC tagja)
+    if char:GetAttribute("InGym") then return false end
+
     return true
 end
 
