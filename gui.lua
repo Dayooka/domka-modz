@@ -67,22 +67,46 @@ local CARD_DEFS = {
         label  = "Kill Aura",
         modKey = nil,
         statFn = function(_)
-            local range  = Cfg.get("KillAura","RANGE")          or 24
-            local mult   = Cfg.get("KillAura","MULTIPLY")        or 2
+            local mode   = Cfg.get("KillAura","ATTACK_MODE")     or "mixed"
+            local range  = Cfg.get("KillAura","RANGE")           or 24
             local freeze = Cfg.get("KillAura","FREEZE_ENABLED") and "BE" or "KI"
             local prio   = Cfg.get("KillAura","TARGET_PRIORITY") or "nearest"
-            return string.format("Range:%d | x%d | Freeze:%s | %s", range, mult, freeze, tostring(prio))
+            return string.format("Mode:%s | Range:%d | Freeze:%s | %s", mode, range, freeze, tostring(prio))
         end,
         extras = {
             { label="Freeze",      cfgKey="KillAura", key="FREEZE_ENABLED"      },
             { label="Players",     cfgKey="KillAura", key="ATTACK_PLAYERS"      },
             { label="Underground", cfgKey="KillAura", key="UNDERGROUND_ENABLED" },
+            { label="Execute",     cfgKey="KillAura", key="EXEC_ENABLED"        },
+            { label="Teleport",    cfgKey="KillAura", key="TELEPORT_ENABLED"    },
         },
         sliders = {
-            { label="Range",      cfgKey="KillAura", key="RANGE",          min=5,    max=60,  step=1    },
-            { label="x Mult",     cfgKey="KillAura", key="MULTIPLY",       min=1,    max=10,  step=1    },
-            { label="Exec %",     cfgKey="KillAura", key="EXEC_THRESHOLD", min=0.05, max=0.5, step=0.05 },
-            { label="MaxTargets", cfgKey="KillAura", key="MAX_TARGETS",    min=1,    max=20,  step=1    },
+            { label="Range",        cfgKey="KillAura", key="RANGE",          min=5,    max=60,   step=1    },
+            { label="Chase Range",  cfgKey="KillAura", key="CHASE_RANGE",    min=10,   max=150,  step=5    },
+            { label="Max Targets",  cfgKey="KillAura", key="MAX_TARGETS",    min=1,    max=20,   step=1    },
+            { label="Light x Mult", cfgKey="KillAura", key="LIGHT_MULTIPLY", min=1,    max=10,   step=1    },
+            { label="Light Count",  cfgKey="KillAura", key="LIGHT_COUNT",    min=1,    max=8,    step=1    },
+            { label="Heavy x Mult", cfgKey="KillAura", key="HEAVY_MULTIPLY", min=1,    max=5,    step=1    },
+            { label="Heavy Hold",   cfgKey="KillAura", key="HEAVY_HOLD",     min=0.1,  max=1.0,  step=0.05 },
+            { label="Burst Delay",  cfgKey="KillAura", key="BURST_DELAY",    min=0.0,  max=0.05, step=0.002},
+            { label="Attack Delay", cfgKey="KillAura", key="ATTACK_DELAY",   min=0.0,  max=0.5,  step=0.01 },
+            { label="Exec Thresh%", cfgKey="KillAura", key="EXEC_THRESHOLD", min=0.05, max=0.5,  step=0.05 },
+            { label="Exec Hold",    cfgKey="KillAura", key="EXEC_HOLD",      min=0.1,  max=1.0,  step=0.05 },
+            { label="Behind Offset",cfgKey="KillAura", key="BEHIND_OFFSET",  min=0.5,  max=8.0,  step=0.5  },
+        },
+        dropdowns = {
+            {
+                label   = "Attack Mode",
+                cfgKey  = "KillAura",
+                key     = "ATTACK_MODE",
+                options = { "mixed", "light", "heavy", "grab" },
+            },
+            {
+                label   = "Target Priority",
+                cfgKey  = "KillAura",
+                key     = "TARGET_PRIORITY",
+                options = { "nearest", "lowest_hp", "mixed" },
+            },
         },
     },
     {
@@ -227,14 +251,40 @@ for _, def in ipairs(CARD_DEFS) do
         end
     end
 
+    -- Dropdown-ok (pl. Attack Mode, Target Priority)
+    if def.dropdowns then
+        for _, dd in ipairs(def.dropdowns) do
+            local curVal = Cfg.get(dd.cfgKey, dd.key) or dd.options[1]
+            local ddElement = MainTab:CreateDropdown({
+                Name         = dd.label,
+                Options      = dd.options,
+                CurrentOption= { curVal },
+                Flag         = dd.cfgKey .. "_" .. dd.key,
+                Callback     = function(Value)
+                    -- Rayfield visszaadhat táblát vagy stringet
+                    local v = type(Value) == "table" and Value[1] or Value
+                    Cfg.set(dd.cfgKey, dd.key, v)
+                end,
+            })
+            table.insert(toggleElements, { cfgKey=dd.cfgKey, key=dd.key, element=ddElement, isDropdown=true })
+        end
+    end
+
     MainTab:CreateDivider()
 end
 
--- Config változás → toggle szinkronizáció
+-- Config változás → toggle/dropdown szinkronizáció
 Cfg.onChange(function(mod, key, val)
     for _, item in ipairs(toggleElements) do
         if item.cfgKey == mod and item.key == key then
-            pcall(function() item.element:Set(val) end)
+            if item.isDropdown then
+                -- Dropdown: Set az aktuális opcióval
+                pcall(function()
+                    item.element:Set(type(val) == "table" and val or { val })
+                end)
+            else
+                pcall(function() item.element:Set(val) end)
+            end
         end
     end
 end)
