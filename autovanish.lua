@@ -1,3 +1,10 @@
+--[[
+    02_AutoVanish  –  LocalScript
+    Elhelyezés: StarterPlayerScripts > AIOScripts
+    Config:  _Config.get("Vanish", key)
+    Státusz: require(this).getStats()
+]]
+
 local Cfg    = (_G._AIO_Config)
 local Shared = (_G._AIO_Shared)
 local RS     = game:GetService("ReplicatedStorage")
@@ -25,20 +32,50 @@ local function vanishCost()
     return base + S.chainCount * 0.04
 end
 
+-- ── Alap karakter feltételek ───────────────────────────────────────
+local AS = Shared.getActionState()
+local function charOK()
+    local c = Shared.getChar()
+    if not c then return false end
+    -- InGym: HARD_CC – edzőteremben nem lehet Vanish-t küldeni
+    if c:GetAttribute("InGym")      then return false end
+    if AS and AS.isDowned(c)        then return false end
+    if AS and AS.isChanneling(c)    then return false end
+    if AS and AS.isIncapacitated(c) then return false end
+    if AS and AS.isRooted(c)        then return false end
+    if AS and AS.isIntangible(c)    then return false end
+    if AS and AS.isPinned(c)        then return false end
+    return true
+end
+
 -- ── Feltételek ─────────────────────────────────────────────────────
 local function canVanish(ki)
+    if not charOK() then return false end
     local cd  = Cfg.get("Vanish","VANISH_COOLDOWN") or 0.46
     local max = Cfg.get("Vanish","CHAIN_MAX")        or 4
     local min = Cfg.get("Vanish","KI_VANISH")        or 0.20
-    if tick() - S.lastVanish < cd    then return false end
-    if S.chainCount >= max            then return false end
+    if tick() - S.lastVanish < cd   then return false end
+    if S.chainCount >= max           then return false end
     if ki < min or ki < vanishCost() then return false end
-    return Shared.canBlock()
+    -- Vanish blockedBy forrás szerint: HARD_CC + Attacking, Carrying,
+    -- Gripping, InClash, InHealingPod, InSafeZone, KiBlasting, NoAttacking
+    local c = Shared.getChar()
+    if c:GetAttribute("InClash")    then return false end
+    if c:GetAttribute("KiBlasting") then return false end
+    if c:GetAttribute("Carrying")   then return false end
+    if c:GetAttribute("InSafeZone") then return false end
+    return true
 end
+
 local function canStep(ki)
+    if not charOK() then return false end
     local minKi = Cfg.get("Vanish","KI_STEP") or 0.06
     if ki < minKi then return false end
-    return Shared.canStep(S.lastStepAt, Cfg.get("Vanish","STEP_COOLDOWN"))
+    -- STEP_COOLDOWN = 0.5 (CombatPublic alapján)
+    local stepCD = Cfg.get("Vanish","STEP_COOLDOWN") or 0.52
+    -- StepIFrameUntil: inStepIFrames ellenőrzés
+    if AS and AS.inStepIFrames(Shared.getChar()) then return false end
+    return Shared.canStep(S.lastStepAt, stepCD)
 end
 
 -- ── Végrehajtás ────────────────────────────────────────────────────
@@ -46,10 +83,12 @@ local function execBlock()
     if not Shared.canBlock() then return end
     S.totalBlock = S.totalBlock + 1; S.mode = "Block"
     local hold = Cfg.get("Vanish","BLOCK_HOLD") or 0.55
+    _G._AIO_DefenseActive = true
     Shared.perform("Block", { phase = "start" })
     task.delay(hold, function()
         Shared.perform("Block", { phase = "stop" })
         if S.mode == "Block" then S.mode = "Idle" end
+        _G._AIO_DefenseActive = false
     end)
 end
 
@@ -58,11 +97,15 @@ local function execStep()
     if not canStep(ki) then execBlock(); return end
     S.lastStepAt = tick(); S.totalStep = S.totalStep + 1; S.mode = "Step"
     local dirs = Cfg.get("Vanish","STEP_DIRS") or { "back","left","right" }
+    _G._AIO_DefenseActive = true
     Shared.perform("SideStep", {
         kind = dirs[math.random(1, #dirs)],
         air  = Shared.isAirborne(),
     })
-    task.delay(0.4, function() if S.mode == "Step" then S.mode = "Idle" end end)
+    task.delay(0.30, function()
+        _G._AIO_DefenseActive = false
+        if S.mode == "Step" then S.mode = "Idle" end
+    end)
 end
 
 local function execVanish()
@@ -74,12 +117,16 @@ local function execVanish()
     if canVanish(ki) then
         S.mode = "Vanish"; S.totalVanish = S.totalVanish + 1
         S.lastVanish = now; S.lastChainAt = now; S.chainCount = S.chainCount + 1
+        _G._AIO_DefenseActive = true
         Shared.perform("Vanish", {})
+        local cd = Cfg.get("Vanish","VANISH_COOLDOWN") or 0.46
         if Cfg.get("Vanish","POST_STEP") then
             task.delay(Cfg.get("Vanish","POST_STEP_DELAY") or 0.10, execStep)
         end
-        local cd = Cfg.get("Vanish","VANISH_COOLDOWN") or 0.46
-        task.delay(cd, function() if S.mode == "Vanish" then S.mode = "Idle" end end)
+        task.delay(cd, function()
+            if S.mode == "Vanish" then S.mode = "Idle" end
+            _G._AIO_DefenseActive = false
+        end)
     else
         local fb = Cfg.get("Vanish","FALLBACK") or { "SideStep","Block" }
         for _, f in ipairs(fb) do
