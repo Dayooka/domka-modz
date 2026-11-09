@@ -1,3 +1,10 @@
+--[[
+    01_AutoBlockParry  –  LocalScript
+    Elhelyezés: StarterPlayerScripts > AIOScripts
+    Config:  _Config.get("BlockParry", key)
+    Státusz: require(this).getStats()
+]]
+
 local Cfg    = (_G._AIO_Config)
 local Shared = (_G._AIO_Shared)
 local RS     = game:GetService("ReplicatedStorage")
@@ -17,9 +24,28 @@ local S = {
 local lastTrig = 0
 
 -- ── Feltételek ─────────────────────────────────────────────────────
-local function canBlock() return Shared.canBlock() end
+-- Forrás alapján Block blockedBy tartalmazza:
+-- HARD_CC + Attacking, Carrying, Gripping, InClash,
+-- InHealingPod, InSafeZone, KiBlasting, NoAttacking, Resting
+local AS = Shared.getActionState()
+local function canBlock()
+    if not Shared.canBlock() then return false end
+    local c = Shared.getChar()
+    if not c then return false end
+    -- InGym: HARD_CC tagja – edzőteremben nem lehet blokkol
+    if c:GetAttribute("InGym")        then return false end
+    -- Intangible állapotok
+    if AS and AS.isIntangible(c)      then return false end
+    -- Pinned: PinnedUntil attribútum
+    if AS and AS.isPinned(c)          then return false end
+    return true
+end
+
 local function canStep()
-    return Shared.canStep(S.lastStepAt, Cfg.get("BlockParry","STEP_COOLDOWN"))
+    if not canBlock() then return false end
+    -- STEP_COOLDOWN = 0.5 (CombatPublic alapján)
+    local stepCD = Cfg.get("BlockParry","STEP_COOLDOWN") or 0.52
+    return Shared.canStep(S.lastStepAt, stepCD)
 end
 
 local function enemyNear()
@@ -57,11 +83,14 @@ local function fireBlock()
     S.blocking    = true
     S.lastBlockAt = now
     S.totalBlock  = S.totalBlock + 1
+    -- KillAura megállítása block alatt
+    _G._AIO_DefenseActive = true
     Shared.perform("Block", { phase = "start" })
     task.delay(hold, function()
         if S.blocking and not S.preemptLock then
             Shared.perform("Block", { phase = "stop" })
             S.blocking = false
+            _G._AIO_DefenseActive = false
         end
     end)
 end
@@ -71,10 +100,15 @@ local function fireStep()
     local dirs = Cfg.get("BlockParry","STEP_DIRS") or { "back","left","right" }
     S.lastStepAt = tick()
     S.totalParry = S.totalParry + 1
+    -- KillAura megállítása step iFrame alatt (STEP_IFRAME = 0.28s)
+    _G._AIO_DefenseActive = true
     Shared.perform("SideStep", {
         kind = dirs[math.random(1, #dirs)],
         air  = Shared.isAirborne(),
     })
+    task.delay(0.30, function()
+        _G._AIO_DefenseActive = false
+    end)
 end
 
 local function onHit()
