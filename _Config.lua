@@ -103,7 +103,7 @@ end
 local defaults = {
 
     Gym = {
-        enabled               = false,
+        enabled               = true,
         TIMING_OFFSET_SECONDS = 0,       -- Timing eltolás (s) – negatív = korábban küld
         SOLVER_ITERATIONS     = 48,      -- Bisection pontosság
         HEARTBEAT_THRESHOLD   = 0.06,    -- Heartbeat váltás küszöb (s)
@@ -111,38 +111,52 @@ local defaults = {
     },
 
     KillAura = {
-        enabled           = false,    -- _G.KillAuraCFG.ENABLED
+        enabled           = true,
 
-        -- Távolság
+        -- ── Támadás mód ─────────────────────────────────────────
+        -- "light"  = csak LightAttack
+        -- "heavy"  = csak HeavyAttack
+        -- "mixed"  = Light combo majd Heavy finisher (LLLLM)
+        -- "grab"   = csak Grab (execute)
+        ATTACK_MODE       = "mixed",
+
+        -- ── Combo beállítások ────────────────────────────────────
+        LIGHT_COUNT       = 4,       -- Hány Light előtt jön Heavy (mixed módban)
+        LIGHT_MULTIPLY    = 2,       -- LightAttack szerver-oldali sokszorozás
+        MULT_DELAY        = 0.006,   -- Sokszorozás delay (s)
+        HEAVY_MULTIPLY    = 1,       -- HeavyAttack sokszorozás
+        HEAVY_HOLD        = 0.22,    -- HeavyAttack tartás (s)
+
+        -- ── Timing ──────────────────────────────────────────────
+        BURST_DELAY       = 0.004,   -- Multi-target burst delay (s)
+        ATTACK_DELAY      = 0.0,     -- Extra delay ütések között (s)
+
+        -- ── Távolság ────────────────────────────────────────────
         RANGE             = 24,      -- Támadási sugár (studs)
         CHASE_RANGE       = 50,      -- Üldözési sugár (studs)
         MAX_TARGETS       = 10,      -- Max egyidejű célpont
 
-        -- Támadás timing
-        BURST_DELAY       = 0.004,   -- Burst ütések közötti delay
-        MULTIPLY          = 2,       -- LightAttack sokszorozás
-        MULT_DELAY        = 0.006,   -- Sokszorozás delay
-
-        -- Célpont prioritás: "nearest" | "lowest_hp" | "mixed"
+        -- ── Célpont prioritás ────────────────────────────────────
+        -- "nearest" | "lowest_hp" | "mixed"
         TARGET_PRIORITY   = "nearest",
-
-        -- Játékos támadás
         ATTACK_PLAYERS    = false,
 
-        -- Execute (knockdown/grab)
+        -- ── Execute (knockdown/grab) ─────────────────────────────
+        EXEC_ENABLED      = true,    -- Execute fázis engedélyezése
         EXEC_THRESHOLD    = 0.15,    -- HP % alatt execute fázis
         EXEC_HOLD         = 0.3,     -- Grab tartás idő (s)
         EXEC_CD           = 2.5,     -- Execute cooldown (s)
 
-        -- Pozíció
-        BEHIND_OFFSET     = 2.5,     -- Mögé teleport távolság
-        BEHIND_RATE       = 0.08,    -- Mögé teleport min intervallum
+        -- ── Pozíció ─────────────────────────────────────────────
+        BEHIND_OFFSET     = 2.5,
+        BEHIND_RATE       = 0.08,
+        TELEPORT_ENABLED  = true,    -- Mögé teleport engedélyezése
 
-        -- Underground (incapacitated állapotban)
+        -- ── Underground ─────────────────────────────────────────
         UNDERGROUND_DEPTH   = 10,
         UNDERGROUND_ENABLED = true,
 
-        -- Freeze (NPC-k befagyasztása)
+        -- ── Freeze ──────────────────────────────────────────────
         FREEZE_ENABLED    = true,
     },
 
@@ -161,7 +175,7 @@ local defaults = {
     },
 
     Vanish = {
-        enabled           = false,
+        enabled           = true,
         VANISH_DELAY      = 0.04,
         VANISH_COOLDOWN   = 0.46,
         KI_VANISH         = 0.20,
@@ -179,7 +193,7 @@ local defaults = {
     },
 
     DragonBall = {
-        enabled           = false,
+        enabled           = true,
         TP_OFFSET_Y       = 3,
         TP_DELAY          = 0.30,
         MAX_RETRIES       = 4,
@@ -198,7 +212,7 @@ local defaults = {
     },
 
     Loot = {
-        enabled           = false,
+        enabled           = true,
         TP_OFFSET_Y       = 3,
         TP_DELAY          = 0.22,
         SCAN_INTERVAL     = 1.0,
@@ -207,7 +221,7 @@ local defaults = {
     },
 
     Senzu = {
-        enabled           = false,
+        enabled           = true,
         CALL_DELAY        = 0.55,
         CHECK_INTERVAL    = 25,
         AUTO_REPLANT      = true,
@@ -216,7 +230,7 @@ local defaults = {
     },
 
     Daily = {
-        enabled           = false,
+        enabled           = true,
         CALL_DELAY        = 0.70,
         MAX_RETRIES       = 3,
         SPIN_MAX          = 7,
@@ -226,7 +240,7 @@ local defaults = {
     },
 
     NPCFarm = {
-        enabled           = false,
+        enabled           = true,
         LIGHT_COUNT       = 4,
         HEAVY_AFTER_LIGHT = true,
         GRAB_ENABLED      = true,
