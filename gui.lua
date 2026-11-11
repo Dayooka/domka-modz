@@ -49,6 +49,82 @@ MainTab:CreateDivider()
 
 -- Kártya definíciók
 local CARD_DEFS = {
+    -- ── AntiDetect ─────────────────────────────────────────────
+    {
+        cfgKey = "StateProbeBypass",
+        label  = "Anti-Detect",
+        modKey = "StateProbeBypass",
+        statFn = function(stats)
+            return "StateProbe Bypass: " .. (stats.status or "-")
+        end,
+    },
+    -- ── ReleaseSkill ───────────────────────────────────────────
+    {
+        cfgKey = "ReleaseSkill",
+        label  = "Skill KillAura",
+        modKey = "ReleaseSkill",
+        statFn = function(stats)
+            return string.format("Status: %s | Cel: %s", stats.status or "-", stats.target or "-")
+        end,
+        extras = {
+            { label="Attackol Jatekost", cfgKey="ReleaseSkill", key="ATTACK_PLAYERS" },
+        },
+        sliders = {
+            { label="Range",       cfgKey="ReleaseSkill", key="LOCK_ON_RANGE", min=5,   max=60,   step=1    },
+            { label="Burst Delay", cfgKey="ReleaseSkill", key="BURST_DELAY",   min=0.0, max=0.05, step=0.002 },
+        },
+        dropdowns = {
+            {
+                label   = "Skill Type",
+                cfgKey  = "ReleaseSkill",
+                key     = "SKILL_TYPE",
+                options = { "Melee", "Ki", "Beam" },
+            },
+        },
+    },
+    -- ── Clash Mash ─────────────────────────────────────────────
+    {
+        cfgKey = "MeleeClashMash",
+        label  = "Auto Clash Mash",
+        modKey = "MeleeClashMash",
+        statFn = function(stats)
+            return string.format("Status: %s | Mash: %d", stats.status or "-", stats.mashCount or 0)
+        end,
+        sliders = {
+            { label="Mash Value", cfgKey="MeleeClashMash", key="MASH_VALUE", min=5,    max=100, step=5    },
+            { label="Mash Delay", cfgKey="MeleeClashMash", key="MASH_DELAY", min=0.01, max=0.2, step=0.01 },
+        },
+    },
+    -- ── Auto Fishing ───────────────────────────────────────────
+    {
+        cfgKey = "Fishing",
+        label  = "Auto Fishing",
+        modKey = "Fishing",
+        statFn = function(stats)
+            return string.format("Status: %s | Fogva: %d", stats.status or "-", stats.caught or 0)
+        end,
+        sliders = {
+            { label="Seq Delay", cfgKey="Fishing", key="SEQUENCE_DELAY", min=0.1, max=2.0, step=0.1  },
+            { label="Jitter",    cfgKey="Fishing", key="JITTER",         min=0.0, max=0.5, step=0.05 },
+        },
+    },
+    -- ── Auto Chamber ───────────────────────────────────────────
+    {
+        cfgKey = "Chamber",
+        label  = "Auto Chamber (XP)",
+        modKey = "Chamber",
+        statFn = function(stats)
+            return string.format("Status: %s | Sessions: %d", stats.status or "-", stats.xpSessions or 0)
+        end,
+        extras = {
+            { label="Auto Mod", cfgKey="Chamber", key="USE_AUTO_MODE" },
+        },
+        sliders = {
+            { label="Action Delay",  cfgKey="Chamber", key="ACTION_DELAY",  min=0.1, max=5.0, step=0.1 },
+            { label="Gravity Level", cfgKey="Chamber", key="GRAVITY_LEVEL", min=1,   max=10,  step=1   },
+        },
+    },
+    -- ── Gym Automation ─────────────────────────────────────────
     {
         cfgKey = "Gym",
         label  = "Gym Automation",
