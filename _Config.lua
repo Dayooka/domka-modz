@@ -299,7 +299,22 @@ local defaults = {
         LOOP_HOURS        = 24,
         CLAIM_EXTRAS      = true,
     },
-
+    AutoQuest = {
+    enabled          = false,
+    autoDialog       = true,
+    autoBoard        = false,
+    autoErrand       = false,
+    autoDaily        = false,
+    autoComplete     = true,
+    autoTeleport     = true,
+    autoDialogue     = true,
+    acceptDelay      = 0,
+    cooldown         = 2,
+    teleportOffset   = 12,
+    teleportHeight   = 4,
+    checkInterval    = 1,
+    dialogueDelay    = 0.6,
+},
     NPCFarm = {
         enabled           = false,
         LIGHT_COUNT       = 4,
