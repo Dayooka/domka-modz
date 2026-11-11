@@ -26,7 +26,7 @@ _G.KillAuraCFG = {
     AUTO_BLOCK_ENABLED    = true,
     AUTO_VANISH_ENABLED   = true,
     AUTO_DB_ENABLED       = false,
-    AUTO_LOOT_ENABLED     = true,
+    AUTO_LOOT_ENABLED     = false,
     AUTO_SENZU_ENABLED    = false,
     AUTO_DAILY_ENABLED    = false,
     AUTO_NPC_FARM_ENABLED = false,
@@ -43,7 +43,9 @@ _G._AIO_Modules = {}
 local modulesToLoad = {
     "_Config.lua",
     "_Shared.lua",
+    "antidetect.lua",   -- StateProbeBypass – LEGELŐSZÖR!
     "combat.lua",
+    "clashmash.lua",    -- Clash mash – combat előtt init
     "autoblock.lua",
     "autovanish.lua",
     "autodb.lua",
@@ -51,6 +53,9 @@ local modulesToLoad = {
     "autosenzu.lua",
     "autodaily.lua",
     "npcfarm.lua",
+    "releaseskill.lua",
+    "autofishing.lua",
+    "autochamber.lua",
     "gym.lua",
     "gui.lua",
 }
