@@ -250,6 +250,36 @@ local CARD_DEFS = {
         },
     },
     {
+    cfgKey = "AutoQuest",
+    label  = "Auto Quest",
+    modKey = "AutoQuest",
+    statFn = function(stats)
+        return string.format(
+            "Aktív: %d | Elfogadva: %d | Vége: %d | Utolsó: %s",
+            stats.active    or 0,
+            stats.accepted  or 0,
+            stats.ended     or 0,
+            stats.lastQuest or "-"
+        )
+    end,
+    extras = {
+        { label="Auto Dialog",   cfgKey="AutoQuest", key="autoDialog"   },
+        { label="Auto Board",    cfgKey="AutoQuest", key="autoBoard"    },
+        { label="Auto Errand",   cfgKey="AutoQuest", key="autoErrand"   },
+        { label="Auto Daily",    cfgKey="AutoQuest", key="autoDaily"    },
+        { label="Auto Complete", cfgKey="AutoQuest", key="autoComplete" },
+        { label="Auto Teleport", cfgKey="AutoQuest", key="autoTeleport" },
+        { label="Auto Párbeszéd",cfgKey="AutoQuest", key="autoDialogue" },
+    },
+    sliders = {
+        { label="Accept Delay",    cfgKey="AutoQuest", key="acceptDelay",    min=0,  max=3,  step=0.1 },
+        { label="Cooldown (s)",    cfgKey="AutoQuest", key="cooldown",       min=0,  max=15, step=0.5 },
+        { label="TP Offset (s)",   cfgKey="AutoQuest", key="teleportOffset", min=3,  max=40, step=1   },
+        { label="Check Interval",  cfgKey="AutoQuest", key="checkInterval",  min=0.5,max=10, step=0.5 },
+        { label="Dialog Delay",    cfgKey="AutoQuest", key="dialogueDelay",  min=0,  max=2,  step=0.1 },
+    },
+},
+    {
         cfgKey = "NPCFarm",
         label  = "Auto NPC Farm",
         modKey = "NPCFarm",
