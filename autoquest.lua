@@ -27,7 +27,7 @@ if not AutoQuest and type(_G.AutoQuest) == "table" then
     print("[AutoQuest] Modul: _G.AutoQuest (extern)")
 end
 
--- ── 2. Inline fallback implementáció ───────────────────────────
+-- ── 2. Inline fallback ────────────────────────────────────────
 if not AutoQuest then
     print("[AutoQuest] RS modul nem letezik -> inline fallback")
 
@@ -57,27 +57,30 @@ if not AutoQuest then
 
     local Remotes = RS:WaitForChild("Remotes", 30)
     local function findRemote(n) return Remotes and Remotes:FindFirstChild(n, true) end
+
+    -- vararg-safe: pcall(method, self, ...) form, no anonymous function
     local function invoke(r, ...)
         if not r then return nil end
         if r:IsA("RemoteEvent") then
-            return (pcall(function() r:FireServer(...) end))
+            return (pcall(r.FireServer, r, ...))
         elseif r:IsA("RemoteFunction") then
-            local ok, res = pcall(function() return r:InvokeServer(...) end)
+            local ok, res = pcall(r.InvokeServer, r, ...)
             if ok then return res end
         end
         return nil
     end
+
+    -- vararg-safe: pcall(cb, ...) with cb user function (not anonymous)
     local function fire(list, ...)
         for _, cb in ipairs(list) do pcall(cb, ...) end
     end
+
     local function qid(p)
         if type(p) == "table" then
             return p.questId or p.id or p.quest or p.lesson or p.key
         end
         return p and tostring(p)
     end
-
-    local me = Players.LocalPlayer
 
     do
         local r = findRemote("QuestQueued")
@@ -189,11 +192,11 @@ if not AutoQuest then
         end
     end)
 
-    AutoQuest       = AQ
-    _G.AutoQuest    = AQ
+    AutoQuest    = AQ
+    _G.AutoQuest = AQ
 end
 
--- ── 3. Stat számlálók ──────────────────────────────────────────
+-- ── 3. Stat számlálók ─────────────────────────────────────────
 local stats = { active = 0, accepted = 0, ended = 0, lastQuest = "-" }
 
 AutoQuest.onAccepted(function(questId)
