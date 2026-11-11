@@ -58,6 +58,7 @@ local modulesToLoad = {
     "autochamber.lua",
     "gym.lua",
     "gui.lua",
+    "autoquest.lua",
 }
 
 print("[DOMKA MODZ] Modulok inicializalasa...")
