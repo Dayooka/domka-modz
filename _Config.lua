@@ -102,8 +102,69 @@ end
 -- ══════════════════════════════════════════
 local defaults = {
 
+    -- ── StateProbeBypass ─────────────────────────────────────────
+    -- Doksi 5. fejezet: StateProbeReport hookolása → mindig "tiszta" állapot
+    -- Doksi 14.5.A: Ez a LEGELSŐ amit érdemes megcsinálni
+    StateProbeBypass = {
+        enabled = true,
+    },
+
+    -- ── ReleaseSkill (Skill KillAura) ────────────────────────────
+    -- Doksi 14.2.A: ReleaseSkill + SetLockOnTarget combo
+    -- Erősebb mint PerformAction mert a szerver skill-sebzést számol
+    ReleaseSkill = {
+        enabled        = false,  -- Óvatosan – erős!
+        SKILL_TYPE     = "Melee", -- "Melee" | "Ki" | "Beam"
+        LOCK_ON_RANGE  = 24,     -- LockOn.MAX_RANGE = 1000, de 24 biztonságos
+        BURST_DELAY    = 0.004,
+        ATTACK_PLAYERS = false,
+    },
+
+    -- ── ZBurstDash ───────────────────────────────────────────────
+    -- Doksi 14.3.C: ZBurstDash spam mozgáshoz
+    -- Config: COOLDOWN=10, ARRIVAL_RADIUS=12, TARGET_ARRIVAL_TIME=1.5
+    ZBurstDash = {
+        enabled       = false,
+        AUTO_DASH     = false,   -- Auto dash legközelebbi NPC-hez
+        COOLDOWN_SPOOF= false,   -- ZBurstDashReadyAt = 0 (attrib reset)
+    },
+
+    -- ── MeleeClashMash ───────────────────────────────────────────
+    -- Doksi 14.2.C: Clash-ban auto mash → mindig megnyeri a clash-t
+    MeleeClashMash = {
+        enabled   = true,
+        MASH_VALUE= 50,   -- Küldött mash érték (emberi max ~15-20 CPS)
+        MASH_DELAY= 0.05, -- Küldések között (ne legyen 0!)
+    },
+
+    -- ── Auto Fishing ─────────────────────────────────────────────
+    -- Doksi 14.4.B: Horgász szekvencia automatizálása
+    Fishing = {
+        enabled       = false,
+        AUTO_BAIT     = true,
+        SEQUENCE_DELAY= 0.3,   -- Emberi-szerű delay a lépések közt
+        JITTER        = 0.15,  -- Random jitter (antidetect)
+    },
+
+    -- ── Auto Cooking ─────────────────────────────────────────────
+    -- Doksi 4.9: CookingDone/Judged kliensjelentés
+    Cooking = {
+        enabled        = false,
+        PRESS_DELAY    = 0.4,
+        COLLECT_DELAY  = 0.5,
+    },
+
+    -- ── Auto Chamber (Gravity Chamber) ───────────────────────────
+    -- Doksi 14.4: RequestChamberAuto – XP farm
+    Chamber = {
+        enabled       = false,
+        USE_AUTO_MODE = true,   -- RequestChamberAuto (egyszerűbb)
+        GRAVITY_LEVEL = 1,      -- RequestChamberGravity szint
+        ACTION_DELAY  = 1.0,
+    },
+
     Gym = {
-        enabled               = false,
+        enabled               = true,
         TIMING_OFFSET_SECONDS = 0,       -- Timing eltolás (s) – negatív = korábban küld
         SOLVER_ITERATIONS     = 48,      -- Bisection pontosság
         HEARTBEAT_THRESHOLD   = 0.06,    -- Heartbeat váltás küszöb (s)
@@ -111,7 +172,7 @@ local defaults = {
     },
 
     KillAura = {
-        enabled           = false,
+        enabled           = true,
 
         -- ── Támadás mód ─────────────────────────────────────────
         -- "light"  = csak LightAttack
@@ -157,7 +218,7 @@ local defaults = {
         UNDERGROUND_ENABLED = true,
 
         -- ── Freeze ──────────────────────────────────────────────
-        FREEZE_ENABLED    = true,
+        FREEZE_ENABLED    = false,
     },
 
     BlockParry = {
@@ -242,12 +303,12 @@ local defaults = {
     NPCFarm = {
         enabled           = false,
         LIGHT_COUNT       = 4,
-        HEAVY_AFTER_LIGHT = false,
-        GRAB_ENABLED      = false,
+        HEAVY_AFTER_LIGHT = true,
+        GRAB_ENABLED      = true,
         GRAB_HOLD         = 0.32,
         ATTACK_CD         = 0.18,
         COMBO_DELAY       = 0.22,
-        TELEPORT_TO_NPC   = false,
+        TELEPORT_TO_NPC   = true,
         TP_OFFSET         = Vector3.new(0,1,2),
         SCAN_RANGE        = 150,
         LOOP_DELAY        = 0.5,
