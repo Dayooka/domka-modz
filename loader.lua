@@ -57,8 +57,8 @@ local modulesToLoad = {
     "autofishing.lua",
     "autochamber.lua",
     "gym.lua",
-    "gui.lua",
     "autoquest.lua",
+    "gui.lua",
 }
 
 print("[DOMKA MODZ] Modulok inicializalasa...")
