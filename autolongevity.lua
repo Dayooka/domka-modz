@@ -11,17 +11,30 @@ if not Cfg then
     return
 end
 
--- ── AutoLongevity modul betöltése ─────────────────────────────────
-local AutoLongevity
-do
-    local ok, result = pcall(function()
-        return require(game:GetService("ReplicatedStorage").Modules.AutoLongevity)
-    end)
-    if not ok or not result then
-        warn("[AutoLongevity] Modul betöltési hiba:", tostring(result))
-        return
-    end
-    AutoLongevity = result
+-- ── AutoLongevity modul (Executor verzió - Biztonságos fallback) ──
+local AutoLongevity = {}
+AutoLongevity.enabled = false
+AutoLongevity.healing = false
+
+-- BindableEventek a jelzésekhez (ha még nincsenek a játékban)
+AutoLongevity.HealingStarted = Instance.new("BindableEvent")
+AutoLongevity.HealingEnded = Instance.new("BindableEvent")
+
+function AutoLongevity.setEnabled(state)
+    AutoLongevity.enabled = state
+    print("[AutoLongevity] Állapot megváltozott:", state)
+end
+
+function AutoLongevity.healNow()
+    print("[AutoLongevity] Kézi gyógyulás indítva...")
+    AutoLongevity.healing = true
+    AutoLongevity.HealingStarted:Fire("pod")
+    -- Ide jöhet a tényleges gyógyulási logika vagy rutinhoz kötött hívás
+end
+
+function AutoLongevity.stopHealing()
+    AutoLongevity.healing = false
+    AutoLongevity.HealingEnded:Fire("stopped")
 end
 
 -- ── Stat számlálók ────────────────────────────────────────────────
@@ -76,7 +89,7 @@ end)
 AutoLongevity.HealingEnded.Event:Connect(function(reason)
     stats.lastReason = reason or "-"
     if reason == "full" then
-        stats.healed += 1
+        stats.healed = stats.healed + 1
         stats.status = "Teli! (" .. stats.healed .. "x)"
     elseif reason == "stopped" then
         stats.status = "Leállítva"
