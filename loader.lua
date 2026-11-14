@@ -30,6 +30,7 @@ _G.KillAuraCFG = {
     AUTO_SENZU_ENABLED    = false,
     AUTO_DAILY_ENABLED    = false,
     AUTO_NPC_FARM_ENABLED = false,
+    AUTO_LONGEVITY_ENABLED = false,
 }
 
 _G._AIO_Modules = {}
@@ -57,6 +58,7 @@ local modulesToLoad = {
     "autofishing.lua",
     "autochamber.lua",
     "gym.lua",
+    "autolongevity.lua",
     "autoquest.lua",
     "gui.lua",
 }
