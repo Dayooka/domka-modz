@@ -8,51 +8,17 @@ if not Cfg then
     return
 end
 
--- ── AutoQuest modul (Executor verzió - Biztonságos fallback) ──────
-local AutoQuest = {}
-AutoQuest.enabled = false
-AutoQuest.activeQuests = {}
-AutoQuest.sideQuests = {}
-AutoQuest.hiddenQuests = {}
-AutoQuest.boardQuests = {}
-
--- Eseménykezelő függvények tárolói
-local acceptedCallbacks = {}
-local endedCallbacks = {}
-local filterCallback = nil
-
-function AutoQuest.setEnabled(state)
-    AutoQuest.enabled = state
-    print("[AutoQuest] Állapot megváltozott:", state)
-end
-
-function AutoQuest.onAccepted(callback)
-    table.insert(acceptedCallbacks, callback)
-end
-
-function AutoQuest.onEnded(callback)
-    table.insert(endedCallbacks, callback)
-end
-
-function AutoQuest.setFilter(callback)
-    filterCallback = callback
-end
-
-function AutoQuest.getQuestName(questId)
-    return tostring(questId)
-end
-
-function AutoQuest.accept(questId)
-    print("[AutoQuest] Kézi elfogadás:", questId)
-    return true
-end
-
-function AutoQuest.getObjective(questId)
-    return nil
-end
-
-function AutoQuest.goToObjective(questId)
-    print("[AutoQuest] Teleport célpontra:", questId)
+-- ── AutoQuest modul betöltése ─────────────────────────────────────
+local AutoQuest
+do
+    local ok, result = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Modules.AutoQuest)
+    end)
+    if not ok or not result then
+        warn("[AutoQuest] Modul betöltési hiba:", tostring(result))
+        return
+    end
+    AutoQuest = result
 end
 
 -- ── Stat számlálók ────────────────────────────────────────────────
@@ -87,7 +53,7 @@ task.spawn(function()
         task.wait(1)
         local count = 0
         if AutoQuest.activeQuests then
-            for _ in pairs(AutoQuest.activeQuests) do count = count + 1 end
+            for _ in pairs(AutoQuest.activeQuests) do count += 1 end
         end
         stats.active = count
         if count > 0 then
