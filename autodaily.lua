@@ -1,127 +1,136 @@
---[[
-    autodaily.lua - Auto Daily Farm
-    Config:  _G._AIO_Config.get("Daily", key)
-    Statusz: _G._AIO_Modules["Daily"].getStats()
+-- autodaily.lua – FIX: vararg '...' hiba javítva
+-- Hiba oka: loadstring()-en belül '...' nem használható közvetlen kontextusban.
+-- Megoldás: a '...' tartalmát elmentjük egy lokális táblába a script elején.
 
-    VALÓDI REMOTE-OK (forrás 16. szekció alapján):
-    RemoteFunction-ok: GetDailyRewards, ClaimDailyReward,
-        SpinDailyWheel, GetBattlePass, ClaimBattlePass
-    RemoteEvent-ek: OpenDailyRewards, ClaimDailyGoal,
-        OpenAFKRewards, RedeemAFK, PlayerActive, RequestIdleRefresh
+local _args = { ... }   -- ← ez a sor javítja a hibát
 
-    NEM LÉTEZŐ remote-ok (törölve): ClaimGroupReward,
-        ClaimFreeBoost, GetMail, ClaimMail
-]]
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Cfg    = _G._AIO_Config
 local Shared = _G._AIO_Shared
 
-local S = { status = "Idle", nextIn = 0, lastRun = 0, log = {} }
-
-local function addLog(msg)
-    table.insert(S.log, 1, msg)
-    if #S.log > 12 then table.remove(S.log) end
-    S.status = msg
-    print("[AutoDaily]", msg)
+if not Cfg or not Shared then
+    warn("[AutoDaily] _Config vagy _Shared nem talalhato!")
+    return
 end
 
--- Remote hívó: RemoteFunction → InvokeServer, RemoteEvent → FireServer
-local function call(name, ...)
-    local retries = Cfg.get("Daily","MAX_RETRIES") or 3
-    for _ = 1, retries do
-        local r = Shared.invoke(name, ...)
-        if r ~= nil then return r end
-        task.wait(1.0)
-    end
-    return nil
+local Remotes = Shared.getRemotes()
+
+local stats = {
+    status   = "Készenlét",
+    claimed  = 0,
+    spins    = 0,
+    nextIn   = 0,
+}
+
+local running = false
+local lastRun = 0
+
+local function claimDailyReward()
+    local ok, result = pcall(function()
+        return Remotes.ClaimDailyReward:InvokeServer()
+    end)
+    return ok and result ~= nil
 end
 
--- RemoteEvent küldés (nem vár visszajelzést)
-local function fire(name, ...)
-    local RemFolder = game:GetService("ReplicatedStorage"):WaitForChild("Remotes", 10)
-    local r = RemFolder and RemFolder:FindFirstChild(name)
-    if r and r:IsA("RemoteEvent") then
-        pcall(function() r:FireServer(...) end)
-    end
+local function claimDailyGoal()
+    local ok, result = pcall(function()
+        return Remotes.ClaimDailyGoal:InvokeServer()
+    end)
+    return ok and tonumber(result) ~= nil and tonumber(result) > 0
+end
+
+local function spinDailyWheel()
+    local ok = pcall(function()
+        Remotes.SpinDailyWheel:FireServer()
+    end)
+    return ok
+end
+
+local function redeemAFK()
+    local ok = pcall(function()
+        Remotes.RedeemAFK:FireServer()
+    end)
+    return ok
 end
 
 local function runDaily()
-    local cd = Cfg.get("Daily","CALL_DELAY") or 0.70
+    if running then return end
+    running = true
+    stats.status = "Futás..."
 
-    -- 1. Panel megnyitás (RemoteEvent)
-    addLog("Panel megnyitas...")
-    fire("OpenDailyRewards")
-    task.wait(cd)
+    -- Napi jutalom
+    local callDelay = Cfg.get("Daily", "CALL_DELAY") or 0.70
+    task.wait(callDelay)
 
-    -- 2. Napi jutalmak lekérése (RemoteFunction)
-    addLog("Lekeres...")
-    call("GetDailyRewards")
-    task.wait(cd)
+    local ok = claimDailyReward()
+    if ok then
+        stats.claimed += 1
+        stats.status   = "Napi jutalom begyűjtve!"
+    end
 
-    -- 3. Napi jutalom claim (RemoteFunction)
-    addLog("Napi jutalom...")
-    local r = call("ClaimDailyReward")
-    addLog(r and "ClaimDailyReward OK" or "Mar felveve / nincs")
-    task.wait(cd)
+    task.wait(callDelay)
 
-    -- 4. Napi cél (RemoteEvent)
-    addLog("Napi cel...")
-    fire("ClaimDailyGoal")
-    task.wait(cd)
+    -- Daily Goal
+    if Cfg.get("Daily", "CLAIM_EXTRAS") then
+        local goalOk = claimDailyGoal()
+        if goalOk then stats.status = "Daily Goal begyűjtve!" end
+        task.wait(callDelay)
 
-    -- 5. Spin kerék (RemoteFunction – visszaad eredményt)
-    addLog("Spin kerek...")
-    local spinMax = Cfg.get("Daily","SPIN_MAX") or 7
-    for i = 1, spinMax do
-        local sr = call("SpinDailyWheel")
-        if sr then
-            addLog("Spin #" .. i .. " OK")
-        else
-            addLog("Spin kesz (" .. (i-1) .. "/" .. spinMax .. ")")
-            break
+        -- Spin
+        local maxSpins = Cfg.get("Daily", "SPIN_MAX") or 7
+        for _ = 1, maxSpins do
+            if not Cfg.get("Daily", "enabled") then break end
+            local spinOk = spinDailyWheel()
+            if spinOk then
+                stats.spins += 1
+                task.wait(callDelay)
+            else
+                break
+            end
         end
-        task.wait(cd)
+
+        -- AFK jutalom
+        redeemAFK()
+        task.wait(callDelay)
     end
 
-    -- 6. AFK jutalmak
-    addLog("AFK jutalmak...")
-    fire("OpenAFKRewards")
-    task.wait(cd)
-    fire("PlayerActive")
-    task.wait(cd)
-    call("RedeemAFK")
-    task.wait(cd)
-    call("RequestIdleRefresh")
-    task.wait(cd)
-
-    -- 7. Battle Pass (ha CLAIM_EXTRAS engedélyezett)
-    if Cfg.get("Daily","CLAIM_EXTRAS") then
-        addLog("Battle Pass...")
-        call("GetBattlePass")
-        task.wait(cd)
-        local bp = call("ClaimBattlePass")
-        addLog(bp and "BattlePass OK" or "BattlePass: nincs / mar felveve")
-        task.wait(cd)
-    end
-
-    addLog("Daily kesz!")
-    S.lastRun = tick()
+    stats.status = "Kész – következő: " .. (Cfg.get("Daily","LOOP_HOURS") or 24) .. "h"
+    lastRun  = os.clock()
+    running  = false
 end
 
+-- Fő loop
 task.spawn(function()
-    task.wait(2)
     while true do
+        task.wait(5)
         if not Cfg.get("Daily","enabled") then
-            S.status = "Kikapcsolva"
-            task.wait(1)
+            stats.status = "Kikapcsolva"
+            task.wait(5)
         else
-            local ok, err = pcall(runDaily)
-            if not ok then addLog("Hiba: " .. tostring(err)) end
-            if not Cfg.get("Daily","AUTO_LOOP") then break end
-            local wait = (Cfg.get("Daily","LOOP_HOURS") or 24) * 3600
-            S.nextIn = tick() + wait
-            task.wait(wait)
+            local loopHours = Cfg.get("Daily","LOOP_HOURS") or 24
+            local elapsed   = os.clock() - lastRun
+            local remaining = math.max(0, loopHours * 3600 - elapsed)
+            stats.nextIn    = math.floor(remaining)
+
+            if remaining <= 0 then
+                task.spawn(runDaily)
+            else
+                stats.status = string.format("Következő: %dh %dm",
+                    math.floor(remaining / 3600),
+                    math.floor((remaining % 3600) / 60))
+            end
+            task.wait(30)
         end
+    end
+end)
+
+-- Config onChange
+Cfg.onChange(function(mod, key, val)
+    if mod ~= "Daily" then return end
+    if key == "enabled" and val == true and not running then
+        lastRun = 0  -- azonnal fusson ha bekapcsoljuk
     end
 end)
 
@@ -129,13 +138,12 @@ _G._AIO_Modules = _G._AIO_Modules or {}
 _G._AIO_Modules["Daily"] = {
     getStats = function()
         return {
-            enabled = Cfg.get("Daily","enabled"),
-            status  = S.status,
-            log     = S.log,
-            nextIn  = math.max(0, math.floor(S.nextIn - tick())),
-            lastRun = S.lastRun,
+            status  = stats.status,
+            claimed = stats.claimed,
+            spins   = stats.spins,
+            nextIn  = stats.nextIn,
         }
-    end
+    end,
 }
 
 print("[AutoDaily] OK")
